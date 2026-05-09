@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""
+Basic test suite for vscode-ark signal classification algorithms.
+Run with: python -m pytest tests/ -v
+"""
+
+import pytest
+from pathlib import Path
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+def test_signal_patterns_import():
+    """Test that signal patterns can be imported from extract.py"""
+    try:
+        from extract import SIGNAL_PATTERNS
+        assert isinstance(SIGNAL_PATTERNS, list)
+        assert len(SIGNAL_PATTERNS) > 0
+        # Check structure of first pattern
+        pattern = SIGNAL_PATTERNS[0]
+        assert len(pattern) == 4  # (signal_type, keywords, description)
+        assert isinstance(pattern[0], str)  # signal_type
+        assert isinstance(pattern[1], list)  # keywords
+        assert isinstance(pattern[2], str)  # description
+    except ImportError:
+        pytest.skip("extract.py dependencies not available")
+
+def test_heat_weights():
+    """Test heat weight constants"""
+    try:
+        from extract import HEAT_WEIGHT
+        assert isinstance(HEAT_WEIGHT, dict)
+        assert 'correction' in HEAT_WEIGHT
+        assert 'frustration' in HEAT_WEIGHT
+        assert HEAT_WEIGHT['correction'] == 3
+        assert HEAT_WEIGHT['frustration'] == 5
+    except ImportError:
+        pytest.skip("extract.py dependencies not available")
+
+def test_basic_file_operations():
+    """Test basic file reading functions"""
+    from ingest import read_json, read_bytes
+
+    # Test with non-existent file
+    assert read_json("/nonexistent/file.json") is None
+    assert read_bytes("/nonexistent/file.bin") is None
+
+    # Test with valid JSON
+    import tempfile
+    import json
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump({"test": "data"}, f)
+        temp_path = f.name
+
+    try:
+        result = read_json(temp_path)
+        assert result == {"test": "data"}
+    finally:
+        os.unlink(temp_path)
+
+def test_compress_decompress():
+    """Test compression functions"""
+    from ingest import compress, decompress_vfs
+    from reconstruct import decompress_vfs as decompress_vfs_alt
+
+    test_data = b"Hello, World! This is test data for compression."
+    compressed = compress(test_data)
+    assert len(compressed) < len(test_data)  # Should be smaller
+
+    # Test decompression
+    decompressed = decompress_vfs(compressed)
+    assert decompressed == test_data
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

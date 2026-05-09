@@ -1,0 +1,12 @@
+include README.md
+include LICENSE
+include requirements.txt
+recursive-include tests *.py
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.db
+global-exclude *.db-*
+global-exclude *.log
+global-exclude watcher-queue/*
+global-exclude policy.txt
+global-exclude .DS_Store

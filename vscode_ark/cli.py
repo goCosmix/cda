@@ -1,0 +1,1843 @@
+#!/usr/bin/env python3
+"""
+cda — Code Direct Ask
+CLI for querying, searching, and managing the vscode-ark session database.
+
+Commands:
+  cda search <query>         Full-text search across all exchanges
+  cda sessions               List all sessions (optionally filtered by workspace)
+  cda session <id>           Show all exchanges in a session
+  cda exchange <id> <idx>    Show one full exchange with tool calls
+  cda workspaces             List all registered workspaces
+  cda workspace <id>         Show sessions for a workspace
+  cda memory                 Show all memory files
+  cda tools <query>          Search tool call arguments and names
+  cda replay <id>            Print a session as a readable conversation
+  cda stats                  System-wide stats
+  cda status                 Watcher daemon status
+  cda watch start            Start the live watcher daemon
+  cda watch stop             Stop the watcher daemon
+  cda sync                   Re-run full ingest (rebuild everything)
+  cda reconstruct            Re-run reconstruction only
+  cda query <sql>            Raw SQL query
+  cda export <id>            Export a session as JSON
+  cda vfs ls <session_id>    List VFS blobs for a session
+  cda vfs cat <vfs_id>       Print decompressed content of a VFS blob
+"""
+
+import os, sys, json, gzip, sqlite3, subprocess, signal, textwrap, time, datetime
+from pathlib import Path
+
+import click
+
+# Package-relative paths
+PACKAGE_DIR = Path(__file__).resolve().parent
+ARK_DIR = PACKAGE_DIR.parent
+DB_PATH = ARK_DIR / "vscode-ark.db"
+PID_FILE = ARK_DIR / "watcher.pid"
+WATCHER = PACKAGE_DIR.parent / "watcher.py"
+INGEST = PACKAGE_DIR.parent / "ingest.py"
+RECON = PACKAGE_DIR.parent / "reconstruct.py"
+
+
+# ─────────────────────────────────────────────
+# ANSI colors (no dep)
+# ─────────────────────────────────────────────
+
+class C:
+    RESET  = "\033[0m"
+    BOLD   = "\033[1m"
+    DIM    = "\033[2m"
+    RED    = "\033[91m"
+    GREEN  = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE   = "\033[94m"
+    MAGENTA= "\033[95m"
+    CYAN   = "\033[96m"
+    WHITE  = "\033[97m"
+
+def bold(s):    return f"{C.BOLD}{s}{C.RESET}"
+def dim(s):     return f"{C.DIM}{s}{C.RESET}"
+def green(s):   return f"{C.GREEN}{s}{C.RESET}"
+def yellow(s):  return f"{C.YELLOW}{s}{C.RESET}"
+def red(s):     return f"{C.RED}{s}{C.RESET}"
+def cyan(s):    return f"{C.CYAN}{s}{C.RESET}"
+def magenta(s): return f"{C.MAGENTA}{s}{C.RESET}"
+def blue(s):    return f"{C.BLUE}{s}{C.RESET}"
+
+def hr(char="─", width=80): return dim(char * width)
+
+def fmt_ts(iso_or_ms):
+    """Format ISO timestamp or ms-since-epoch to readable local time."""
+    if not iso_or_ms:
+        return dim("—")
+    try:
+        if isinstance(iso_or_ms, (int, float)):
+            dt = datetime.datetime.fromtimestamp(iso_or_ms / 1000)
+        else:
+            dt = datetime.datetime.fromisoformat(str(iso_or_ms).replace("Z", "+00:00"))
+            dt = dt.astimezone()
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return str(iso_or_ms)
+
+def fmt_size(n):
+    if n is None: return "—"
+    if n < 1024: return f"{n}B"
+    if n < 1024**2: return f"{n//1024}KB"
+    return f"{n/1024/1024:.1f}MB"
+
+def truncate(s, n=80):
+    s = (s or "").replace("\n", " ").strip()
+    return s[:n] + "…" if len(s) > n else s
+
+def table(rows, headers, widths=None):
+    """Print a simple aligned table."""
+    if not rows:
+        click.echo(dim("  (no results)"))
+        return
+    # Auto widths
+    cols = len(headers)
+    if widths is None:
+        widths = [max(len(str(headers[i])), max(len(str(r[i])) for r in rows)) for i in range(cols)]
+    header_line = "  " + "  ".join(bold(str(headers[i]).ljust(widths[i])) for i in range(cols))
+    click.echo(header_line)
+    click.echo("  " + dim("  ".join("─" * widths[i] for i in range(cols))))
+    for row in rows:
+        click.echo("  " + "  ".join(str(row[i]).ljust(widths[i]) for i in range(cols)))
+
+
+# ─────────────────────────────────────────────
+# DB
+# ─────────────────────────────────────────────
+
+def db():
+    if not DB_PATH.exists():
+        click.echo(red(f"DB not found: {DB_PATH}"))
+        click.echo(f"Run: {bold('cda sync')} to initialize")
+        sys.exit(1)
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+def short_id(s, n=8):
+    return (s or "")[:n]
+
+
+# ─────────────────────────────────────────────
+# CLI root
+# ─────────────────────────────────────────────
+
+class CDAGroup(click.Group):
+    def format_help(self, ctx, formatter):
+        click.echo("================================================================================")
+        click.echo("  CDA \u2014 Code Direct Ask")
+        click.echo("================================================================================")
+        click.echo("  System   : cda")
+        click.echo(f"  Runtime  : {DB_PATH}")
+        click.echo("  Status   : active\n")
+        click.echo("Usage:")
+        
+        commands = []
+        for cmd in self.list_commands(ctx):
+            c = self.get_command(ctx, cmd)
+            if c and not c.hidden:
+                help_str = c.get_short_help_str(80) or ""
+                commands.append((cmd, help_str))
+        
+        if commands:
+            max_len = max(len(c[0]) for c in commands)
+            for cmd, help_str in commands:
+                click.echo(f"  cda {cmd.ljust(max_len)}    {help_str}")
+        click.echo("")
+
+@click.group(cls=CDAGroup, invoke_without_command=True)
+@click.pass_context
+@click.version_option("1.0.0", prog_name="cda")
+def cli(ctx):
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+# ─────────────────────────────────────────────
+# STATS
+# ─────────────────────────────────────────────
+
+@cli.command()
+def stats():
+    """System-wide stats and coverage summary."""
+    conn = db()
+    click.echo()
+    click.echo(bold("  vscode-ark  ") + dim(str(DB_PATH)))
+    click.echo(hr())
+
+    tables = [
+        ("workspaces",         "Registered workspaces"),
+        ("sessions",           "Total sessions"),
+        ("exchanges",          "Reconstructed exchanges"),
+        ("tool_calls",         "Indexed tool calls"),
+        ("edit_sessions",      "Edit sessions parsed"),
+        ("edited_files",       "Edited files tracked"),
+        ("transcript_events",  "Transcript events"),
+        ("chat_messages",      "Chat messages"),
+        ("vfs",                "VFS blobs"),
+        ("state_items",        "state.vscdb items"),
+        ("memory_files",       "Memory files"),
+    ]
+    for tbl, label in tables:
+        try:
+            n = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
+            click.echo(f"  {label:<30} {bold(str(n)):>10}")
+        except Exception:
+            pass
+
+    click.echo()
+    # VFS breakdown
+    click.echo(bold("  VFS by type:"))
+    for r in conn.execute("SELECT source_type, COUNT(*) n, SUM(size_bytes) total FROM vfs GROUP BY source_type ORDER BY total DESC").fetchall():
+        click.echo(f"    {r['source_type']:<22} {r['n']:>6} files  {fmt_size(r['total']):>10} raw")
+
+    click.echo()
+    # Coverage
+    has_t = conn.execute("SELECT COUNT(*) FROM session_storage WHERE has_transcript=1").fetchone()[0]
+    has_c = conn.execute("SELECT COUNT(*) FROM session_storage WHERE has_chat_session=1").fetchone()[0]
+    has_e = conn.execute("SELECT COUNT(*) FROM session_storage WHERE has_edit_session=1").fetchone()[0]
+    has_to = conn.execute("SELECT COUNT(*) FROM session_storage WHERE has_tool_outputs=1").fetchone()[0]
+    click.echo(bold("  Session coverage:"))
+    click.echo(f"    Transcripts:      {has_t}")
+    click.echo(f"    Chat sessions:    {has_c}")
+    click.echo(f"    Edit sessions:    {has_e}")
+    click.echo(f"    Tool outputs:     {has_to}")
+
+    db_size = DB_PATH.stat().st_size
+    click.echo()
+    click.echo(f"  DB size: {bold(fmt_size(db_size))}")
+    click.echo()
+    conn.close()
+
+
+# ─────────────────────────────────────────────
+# STATUS (watcher)
+# ─────────────────────────────────────────────
+
+@cli.command()
+def status():
+    """Watcher daemon status."""
+    click.echo()
+    if PID_FILE.exists():
+        pid = PID_FILE.read_text().strip()
+        try:
+            os.kill(int(pid), 0)
+            click.echo(f"  Watcher: {green('RUNNING')}  pid={bold(pid)}")
+        except (ProcessLookupError, ValueError):
+            click.echo(f"  Watcher: {red('DEAD')}  (stale pid file: {pid})")
+    else:
+        click.echo(f"  Watcher: {yellow('STOPPED')}")
+        click.echo(f"  Start with: {bold('cda watch start')}")
+
+    # Queue status
+    queue_dir = ARK_DIR / "watcher-queue"
+    if queue_dir.exists():
+        pending = len(list(queue_dir.glob("*.json")))
+        completed = len(list(queue_dir.glob("*.completed")))
+        click.echo(f"  Queue: {pending} pending, {completed} completed")
+        if pending > 0:
+            # Show last pending operation
+            pending_files = sorted(queue_dir.glob("*.json"))
+            if pending_files:
+                try:
+                    data = json.loads(pending_files[-1].read_text())
+                    click.echo(f"  Last pending: {data.get('type', 'unknown')} at {fmt_ts(data.get('timestamp'))}")
+                except Exception:
+                    pass
+    else:
+        click.echo(f"  Queue: {dim('not initialized')}")
+
+    # Last activity from file_offsets
+    try:
+        conn = db()
+        row = conn.execute("SELECT MAX(updated_at) FROM file_offsets").fetchone()
+        if row and row[0]:
+            click.echo(f"  Last offset update: {fmt_ts(row[0])}")
+        row2 = conn.execute("SELECT MAX(ingested_at) FROM transcript_events").fetchone()
+        if row2 and row2[0]:
+            click.echo(f"  Last event ingested: {fmt_ts(row2[0])}")
+        conn.close()
+    except Exception:
+        pass
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# WATCH
+# ─────────────────────────────────────────────
+
+@cli.group()
+def watch():
+    """Manage the live watcher daemon."""
+    pass
+
+@watch.command("start")
+def watch_start():
+    """Start the live sync watcher daemon."""
+    if PID_FILE.exists():
+        pid = PID_FILE.read_text().strip()
+        try:
+            os.kill(int(pid), 0)
+            click.echo(yellow(f"  Watcher already running (pid={pid})"))
+            return
+        except (ProcessLookupError, ValueError):
+            PID_FILE.unlink(missing_ok=True)
+
+    proc = subprocess.Popen(
+        [sys.executable, str(WATCHER)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    time.sleep(1.5)
+    if PID_FILE.exists():
+        pid = PID_FILE.read_text().strip()
+        click.echo(green(f"  Watcher started  pid={pid}"))
+    else:
+        click.echo(red("  Watcher may have failed to start — check watcher.log"))
+
+@watch.command("stop")
+def watch_stop():
+    """Stop the live sync watcher daemon."""
+    if not PID_FILE.exists():
+        click.echo(yellow("  Watcher not running"))
+        return
+    pid = PID_FILE.read_text().strip()
+    try:
+        os.kill(int(pid), signal.SIGTERM)
+        time.sleep(0.5)
+        click.echo(green(f"  Watcher stopped (pid={pid})"))
+        PID_FILE.unlink(missing_ok=True)
+    except (ProcessLookupError, ValueError):
+        click.echo(yellow(f"  Process {pid} not found — cleaning up pid file"))
+        PID_FILE.unlink(missing_ok=True)
+
+@watch.command("restart")
+def watch_restart():
+    """Restart the watcher daemon."""
+    ctx = click.get_current_context()
+    ctx.invoke(watch_stop)
+    time.sleep(0.5)
+    ctx.invoke(watch_start)
+
+
+# ─────────────────────────────────────────────
+# SYNC / RECONSTRUCT
+# ─────────────────────────────────────────────
+
+@cli.command()
+def sync():
+    """Full re-ingest from disk (rebuilds entire DB)."""
+    click.echo(yellow("  Running full ingest — this rewrites the DB..."))
+    result = subprocess.run([sys.executable, str(INGEST)], capture_output=False)
+    if result.returncode == 0:
+        click.echo(green("  Ingest complete"))
+        click.echo(yellow("  Running reconstruction..."))
+        subprocess.run([sys.executable, str(RECON)], capture_output=False)
+        click.echo(green("  Done"))
+    else:
+        click.echo(red("  Ingest failed"))
+
+@cli.command()
+def reconstruct():
+    """Re-run session reconstruction and FTS rebuild only."""
+    click.echo(yellow("  Reconstructing exchanges..."))
+    subprocess.run([sys.executable, str(RECON)], capture_output=False)
+    click.echo(green("  Done"))
+
+
+# ─────────────────────────────────────────────
+# WORKSPACES
+# ─────────────────────────────────────────────
+
+@cli.command()
+def workspaces():
+    """List all registered workspaces."""
+    conn = db()
+    rows = conn.execute(
+        "SELECT workspace_id, name, type, session_count, uri FROM workspaces ORDER BY session_count DESC"
+    ).fetchall()
+    conn.close()
+    click.echo()
+    click.echo(bold(f"  {len(rows)} workspaces"))
+    click.echo(hr())
+    for r in rows:
+        sessions_label = green(str(r['session_count'])) if r['session_count'] > 0 else dim("0")
+        click.echo(
+            f"  {cyan(r['workspace_id'][:16])}  "
+            f"{bold(truncate(r['name'] or '?', 30)):<32}  "
+            f"{dim(r['type'] or '?'):<10}  "
+            f"{sessions_label} sessions"
+        )
+        click.echo(f"             {dim(truncate(r['uri'] or '', 70))}")
+    click.echo()
+
+@cli.command()
+@click.argument("workspace_id")
+def workspace(workspace_id):
+    """Show all sessions for a workspace (partial ID ok)."""
+    conn = db()
+    rows = conn.execute(
+        """SELECT s.session_id, s.title, s.created_at, s.last_message_at,
+                  s.request_count, ss.has_transcript, ss.has_chat_session, ss.has_tool_outputs
+           FROM sessions s
+           LEFT JOIN session_storage ss USING(session_id)
+           WHERE s.workspace_id LIKE ?
+           ORDER BY s.last_message_at DESC""",
+        (f"{workspace_id}%",)
+    ).fetchall()
+    conn.close()
+    click.echo()
+    click.echo(bold(f"  {len(rows)} sessions in workspace {cyan(workspace_id[:16])}"))
+    click.echo(hr())
+    for r in rows:
+        flags = ""
+        if r['has_transcript']: flags += green("T")
+        if r['has_chat_session']: flags += cyan("C")
+        if r['has_tool_outputs']: flags += yellow("O")
+        click.echo(
+            f"  {cyan(r['session_id'][:16])}  "
+            f"{bold(truncate(r['title'] or 'untitled', 42)):<44}  "
+            f"{fmt_ts(r['last_message_at'])}  "
+            f"{dim(str(r['request_count'] or 0)+' evts')}"
+            f"  [{flags}]"
+        )
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# SESSIONS
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.option("--workspace", "-w", default=None, help="Filter by workspace ID prefix")
+@click.option("--limit", "-n", default=50, help="Max results")
+def sessions(workspace, limit):
+    """List sessions, newest first."""
+    conn = db()
+    if workspace:
+        rows = conn.execute(
+            """SELECT s.session_id, s.workspace_id, s.title, s.created_at, s.last_message_at, s.request_count
+               FROM sessions s WHERE s.workspace_id LIKE ?
+               ORDER BY s.last_message_at DESC LIMIT ?""",
+            (f"{workspace}%", limit)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT s.session_id, s.workspace_id, s.title, s.created_at, s.last_message_at, s.request_count
+               FROM sessions s ORDER BY s.last_message_at DESC LIMIT ?""",
+            (limit,)
+        ).fetchall()
+    conn.close()
+    click.echo()
+    click.echo(bold(f"  {len(rows)} sessions"))
+    click.echo(hr())
+    for r in rows:
+        click.echo(
+            f"  {cyan(r['session_id'][:16])}  "
+            f"{dim(r['workspace_id'][:8])}  "
+            f"{bold(truncate(r['title'] or 'untitled', 44)):<46}  "
+            f"{fmt_ts(r['last_message_at'])}"
+        )
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# SESSION (detail)
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("session_id")
+def session(session_id):
+    """Show all exchanges in a session."""
+    conn = db()
+    meta = conn.execute(
+        "SELECT * FROM sessions WHERE session_id LIKE ?", (f"{session_id}%",)
+    ).fetchone()
+    if not meta:
+        click.echo(red(f"  Session not found: {session_id}"))
+        conn.close()
+        return
+
+    sid = meta['session_id']
+    click.echo()
+    click.echo(bold(f"  Session: {cyan(sid[:16])}"))
+    click.echo(f"  Title:   {bold(meta['title'] or 'untitled')}")
+    click.echo(f"  Created: {fmt_ts(meta['created_at'])}  Last msg: {fmt_ts(meta['last_message_at'])}")
+    click.echo(hr())
+
+    rows = conn.execute(
+        """SELECT exchange_index, user_ts, user_message, reasoning_text, response_text,
+                  tool_call_count, has_tool_output
+           FROM exchanges WHERE session_id=? ORDER BY exchange_index""",
+        (sid,)
+    ).fetchall()
+    conn.close()
+
+    for r in rows:
+        tc = r['tool_call_count'] or 0
+        has_out = r['has_tool_output']
+        tc_label = (green if has_out else yellow)(f" [{tc} tools]") if tc > 0 else ""
+        r_len = len(r['reasoning_text'] or "")
+        resp_len = len(r['response_text'] or "")
+        idx_str = bold(f"[{r['exchange_index']:>2}]")
+        dim_str = dim(f"reason:{r_len}b resp:{resp_len}b")
+        click.echo(
+            f"  {idx_str}  "
+            f"{fmt_ts(r['user_ts'])}  "
+            f"{tc_label}  "
+            f"{dim_str}"
+        )
+        msg = truncate(r['user_message'] or "", 80)
+        if msg:
+            click.echo(f"        {cyan('>')} {msg}")
+    click.echo()
+    click.echo(dim(f"  Use: cda exchange {sid[:16]} <index>  to view full exchange"))
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# EXCHANGE (full detail)
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("session_id")
+@click.argument("index", type=int)
+@click.option("--tool-outputs", "-t", is_flag=True, help="Include full tool output content")
+@click.option("--reasoning", "-r", is_flag=True, help="Include reasoning text")
+def exchange(session_id, index, tool_outputs, reasoning):
+    """Show one full exchange with all tool calls."""
+    conn = db()
+    row = conn.execute(
+        """SELECT * FROM exchanges WHERE session_id LIKE ? AND exchange_index=?""",
+        (f"{session_id}%", index)
+    ).fetchone()
+    if not row:
+        click.echo(red(f"  Exchange [{index}] not found in session {session_id}"))
+        conn.close()
+        return
+
+    click.echo()
+    click.echo(bold(f"  Exchange [{index}]  —  {cyan(row['session_id'][:16])}"))
+    click.echo(f"  {fmt_ts(row['user_ts'])}")
+    click.echo(hr())
+
+    # User message
+    click.echo(bold(f"\n  {cyan('USER')}"))
+    for line in (row['user_message'] or "").splitlines():
+        click.echo(f"    {line}")
+
+    # Reasoning
+    if reasoning and row['reasoning_text']:
+        click.echo(bold(f"\n  {magenta('REASONING')}"))
+        for line in textwrap.wrap(row['reasoning_text'], 90):
+            click.echo(f"    {dim(line)}")
+
+    # Tool calls
+    if row['tool_call_count']:
+        click.echo(bold(f"\n  {yellow('TOOL CALLS')}  ({row['tool_call_count']})"))
+        try:
+            calls = json.loads(row['tool_calls'] or "[]")
+        except Exception:
+            calls = []
+        for i, tc in enumerate(calls):
+            click.echo(f"\n    {bold(f'[{i}]')} {yellow(tc.get('name', '?'))}  {dim(tc.get('toolCallId','')[:24])}")
+            args = tc.get('arguments', {})
+            if isinstance(args, dict):
+                for k, v in args.items():
+                    v_str = truncate(str(v), 100)
+                    click.echo(f"        {cyan(k)}: {v_str}")
+            elif args:
+                click.echo(f"        {truncate(str(args), 100)}")
+            success = tc.get('success')
+            if success is not None:
+                label = green("✓") if success else red("✗")
+                click.echo(f"        {label} success={success}")
+            if tool_outputs and tc.get('output'):
+                click.echo(f"        {bold('output:')}")
+                for line in (tc['output'] or "")[:2000].splitlines():
+                    click.echo(f"          {dim(line)}")
+
+    # Response
+    if row['response_text']:
+        click.echo(bold(f"\n  {green('ASSISTANT')}"))
+        for line in (row['response_text'] or "").splitlines():
+            click.echo(f"    {line}")
+
+    click.echo()
+    conn.close()
+
+
+# ─────────────────────────────────────────────
+# REPLAY
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("session_id")
+@click.option("--reasoning", "-r", is_flag=True, help="Include reasoning text")
+def replay(session_id, reasoning):
+    """Print a full session as a readable conversation."""
+    conn = db()
+    meta = conn.execute(
+        "SELECT * FROM sessions WHERE session_id LIKE ?", (f"{session_id}%",)
+    ).fetchone()
+    if not meta:
+        click.echo(red(f"  Session not found: {session_id}"))
+        conn.close()
+        return
+
+    sid = meta['session_id']
+    rows = conn.execute(
+        "SELECT * FROM exchanges WHERE session_id=? ORDER BY exchange_index",
+        (sid,)
+    ).fetchall()
+    conn.close()
+
+    click.echo()
+    click.echo(bold(f"  ═══ {meta['title'] or 'Session'} ═══"))
+    click.echo(dim(f"  {sid}  ·  {fmt_ts(meta['created_at'])}"))
+    click.echo()
+
+    for r in rows:
+        if r['user_message']:
+            click.echo(f"{cyan(bold('  YOU'))}  {dim(fmt_ts(r['user_ts']))}")
+            click.echo()
+            for line in (r['user_message'] or "").splitlines():
+                click.echo(f"    {line}")
+            click.echo()
+
+        if reasoning and r['reasoning_text']:
+            click.echo(f"{magenta(bold('  [thinking]'))}")
+            for line in textwrap.wrap(r['reasoning_text'][:500], 88):
+                click.echo(f"    {dim(line)}")
+            click.echo()
+
+        if r['tool_call_count']:
+            try:
+                calls = json.loads(r['tool_calls'] or "[]")
+            except Exception:
+                calls = []
+            names = ", ".join(tc.get('name', '?') for tc in calls[:5])
+            more = f" +{len(calls)-5}" if len(calls) > 5 else ""
+            click.echo(f"  {yellow(bold('  ⚙'))}  {dim(f'tools: {names}{more}')}")
+            click.echo()
+
+        if r['response_text']:
+            click.echo(f"{green(bold('  CDA'))}")
+            click.echo()
+            for line in (r['response_text'] or "").splitlines():
+                click.echo(f"    {line}")
+            click.echo()
+
+        click.echo(dim(f"  {'─' * 76}"))
+        click.echo()
+
+
+# ─────────────────────────────────────────────
+# SEARCH
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("query")
+@click.option("--session", "-s", default=None, help="Limit to session ID prefix")
+@click.option("--workspace", "-w", default=None, help="Limit to workspace ID prefix")
+@click.option("--limit", "-n", default=20, help="Max results")
+@click.option("--full", "-f", is_flag=True, help="Show full response text, not snippet")
+def search(query, session, workspace, limit, full):
+    """Full-text search across all exchanges."""
+    conn = db()
+    # Quote hyphens for FTS5
+    fts_query = f'"{query}"' if '-' in query and not query.startswith('"') else query
+    hl_open  = "\033[93m"
+    hl_close = "\033[0m"
+    try:
+        sql = (
+            "SELECT e.session_id, e.workspace_id, e.exchange_index, e.user_ts,"
+            " e.user_message, e.response_text, e.tool_call_count,"
+            f" snippet(fts_exchanges, 4, '{hl_open}', '{hl_close}', '...', 20) AS snip"
+            " FROM fts_exchanges"
+            " JOIN exchanges e ON e.id = fts_exchanges.rowid"
+            " WHERE fts_exchanges MATCH ?"
+        )
+        params = [fts_query]
+        if session:
+            sql += " AND e.session_id LIKE ?"
+            params.append(f"{session}%")
+        if workspace:
+            sql += " AND e.workspace_id LIKE ?"
+            params.append(f"{workspace}%")
+        sql += " ORDER BY rank LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except Exception as e:
+        click.echo(red(f"  Search error: {e}"))
+        conn.close()
+        return
+
+    conn.close()
+    click.echo()
+    click.echo(bold(f"  {len(rows)} results for {cyan(repr(query))}"))
+    click.echo(hr())
+
+    filtered_rows = []
+    for r in rows:
+        # Apply policy filter
+        text_to_check = (r['user_message'] or '') + ' ' + (r['response_text'] or '')
+        if check_policy(text_to_check):
+            filtered_rows.append(r)
+
+    if len(filtered_rows) != len(rows):
+        click.echo(yellow(f"  Policy filtered: {len(rows) - len(filtered_rows)} results hidden"))
+        click.echo()
+
+    for r in filtered_rows:
+        tc_label = yellow(f"[{r['tool_call_count']} tools] ") if r['tool_call_count'] else ""
+        idx_str = bold(f"[{r['exchange_index']:>2}]")
+        click.echo(
+            f"\n  {cyan(r['session_id'][:16])}  "
+            f"{dim(r['workspace_id'][:8])}  "
+            f"{idx_str}  "
+            f"{fmt_ts(r['user_ts'])}  {tc_label}"
+        )
+        if r['user_message']:
+            click.echo(f"  {cyan('Q:')} {truncate(r['user_message'], 80)}")
+        if full and r['response_text']:
+            click.echo(f"  {green('A:')} {truncate(r['response_text'], 120)}")
+        else:
+            click.echo(f"  {dim(r['snip'])}")
+        click.echo(f"  {dim('cda exchange ' + r['session_id'][:16] + ' ' + str(r['exchange_index']))}")
+
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# TOOLS SEARCH
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("query", default="")
+@click.option("--limit", "-n", default=30)
+@click.option("--top", is_flag=True, help="Show top tools by call count")
+def tools(query, limit, top):
+    """Search tool calls table. No query = show top tools by frequency."""
+    conn = db()
+    click.echo()
+
+    if top or not query:
+        rows = conn.execute(
+            """SELECT tool_name, COUNT(*) n, COUNT(DISTINCT session_id) sessions,
+               SUM(has_output) with_output
+               FROM tool_calls GROUP BY tool_name ORDER BY n DESC LIMIT ?""",
+            (limit,)
+        ).fetchall()
+        conn.close()
+        click.echo(bold(f"  Tool call frequency (top {len(rows)})"))
+        click.echo(hr())
+        for r in rows:
+            click.echo(
+                f"  {yellow(r['tool_name']):<45}  "
+                f"{bold(str(r['n'])):>6} calls  "
+                f"{r['sessions']:>4} sessions  "
+                f"{dim(str(r['with_output'])+' w/output')}"
+            )
+        click.echo()
+        return
+
+    q = f'%{query}%'
+    rows = conn.execute(
+        """SELECT session_id, exchange_index, tool_name, file_path, arguments_json, has_output
+           FROM tool_calls
+           WHERE tool_name LIKE ? OR file_path LIKE ? OR arguments_json LIKE ?
+           ORDER BY session_id, exchange_index LIMIT ?""",
+        (q, q, q, limit)
+    ).fetchall()
+    conn.close()
+
+    click.echo(bold(f"  {len(rows)} tool calls matching {cyan(repr(query))}"))
+    click.echo(hr())
+    for r in rows:
+        fp = dim(f"  → {r['file_path']}") if r['file_path'] else ''
+        out = green(" [out]") if r['has_output'] else ''
+        click.echo(
+            f"  {dim(r['session_id'][:16])}  [{r['exchange_index']:>2}]  "
+            f"{yellow(r['tool_name'])}{out}{fp}"
+        )
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# EDITS
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.option("--session", "-s", default=None, help="Show edits for a specific session")
+@click.option("--file", "-f", "file_query", default=None, help="Filter by file path substring")
+@click.option("--changed-only", is_flag=True, help="Show only sessions with modifications")
+@click.option("--limit", "-n", default=30)
+def edits(session, file_query, changed_only, limit):
+    """Show edit session analytics (files modified per session)."""
+    conn = db()
+    click.echo()
+
+    if session:
+        # Detail view for one session
+        row = conn.execute(
+            "SELECT * FROM edit_sessions WHERE session_id=?", (session,)
+        ).fetchone()
+        if not row:
+            click.echo(red(f"  No edit session for: {session}"))
+            conn.close()
+            return
+        click.echo(bold(f"  Edit session: {cyan(session[:16])}"))
+        click.echo(hr())
+        click.echo(f"  Total files:    {row['total_files']}")
+        click.echo(f"  Modified files: {bold(str(row['modified_files']))}")
+        click.echo(f"  Edit rounds:    {row['edit_rounds']}")
+        click.echo()
+        files = conn.execute(
+            "SELECT file_path, language_id, was_modified FROM edited_files WHERE session_id=? ORDER BY was_modified DESC, file_path",
+            (session,)
+        ).fetchall()
+        for f in files:
+            marker = green("  ✓ ") if f['was_modified'] else dim("  · ")
+            click.echo(f"{marker}{f['file_path']}  {dim(f['language_id'] or '')}")
+        click.echo()
+        conn.close()
+        return
+
+    if file_query:
+        rows = conn.execute(
+            """SELECT ef.session_id, ef.file_path, ef.language_id, ef.was_modified
+               FROM edited_files ef WHERE ef.file_path LIKE ?
+               ORDER BY ef.was_modified DESC, ef.file_path LIMIT ?""",
+            (f'%{file_query}%', limit)
+        ).fetchall()
+        conn.close()
+        click.echo(bold(f"  {len(rows)} file records matching {cyan(repr(file_query))}"))
+        click.echo(hr())
+        for r in rows:
+            marker = green("  ✓ ") if r['was_modified'] else dim("  · ")
+            click.echo(f"{marker}{dim(r['session_id'][:16])}  {r['file_path']}  {dim(r['language_id'] or '')}")
+        click.echo()
+        return
+
+    # Summary view
+    sql = "SELECT session_id, total_files, modified_files, edit_rounds FROM edit_sessions"
+    if changed_only:
+        sql += " WHERE modified_files > 0"
+    sql += " ORDER BY modified_files DESC, total_files DESC LIMIT ?"
+    rows = conn.execute(sql, (limit,)).fetchall()
+
+    total_mod = conn.execute("SELECT SUM(modified_files) FROM edit_sessions").fetchone()[0] or 0
+    total_sess = conn.execute("SELECT COUNT(*) FROM edit_sessions").fetchone()[0]
+    with_changes = conn.execute("SELECT COUNT(*) FROM edit_sessions WHERE modified_files>0").fetchone()[0]
+    conn.close()
+
+    click.echo(bold(f"  {total_sess} edit sessions  |  {with_changes} with changes  |  {total_mod} total modified files"))
+    click.echo(hr())
+    for r in rows:
+        mod_label = bold(green(str(r['modified_files']))) if r['modified_files'] else dim("0")
+        click.echo(
+            f"  {cyan(r['session_id'][:16])}  "
+            f"files={r['total_files']:>4}  "
+            f"modified={mod_label}  "
+            f"rounds={dim(str(r['edit_rounds']))}"
+        )
+    click.echo()
+
+
+
+
+# ─────────────────────────────────────────────
+# MEMORY
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.option("--scope", default=None, help="Filter: global | workspace | session | repo")
+@click.option("--cat", default=None, help="Print content of file by filename")
+def memory(scope, cat):
+    """Show all memory files (global + workspace)."""
+    conn = db()
+
+    if cat:
+        row = conn.execute(
+            "SELECT scope, workspace_id, filename, content FROM memory_files WHERE filename LIKE ?",
+            (f"%{cat}%",)
+        ).fetchone()
+        conn.close()
+        if not row:
+            click.echo(red(f"  No memory file matching: {cat}"))
+            return
+        click.echo()
+        click.echo(bold(f"  [{row['scope']}] {row['filename']}  {dim(row['workspace_id'] or '')}"))
+        click.echo(hr())
+        click.echo(row['content'])
+        return
+
+    sql = "SELECT scope, workspace_id, filename, size_bytes, ingested_at FROM memory_files"
+    params = []
+    if scope:
+        sql += " WHERE scope=?"
+        params.append(scope)
+    sql += " ORDER BY scope, filename"
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+
+    click.echo()
+    click.echo(bold(f"  {len(rows)} memory files"))
+    click.echo(hr())
+    for r in rows:
+        scope_label = cyan(r['scope']) if r['scope'] == 'global' else green(r['scope'])
+        click.echo(
+            f"  [{scope_label}]  "
+            f"{bold(r['filename']):<40}  "
+            f"{fmt_size(r['size_bytes']):>8}  "
+            f"{dim(r['workspace_id'] or '(global)')}"
+        )
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# VFS
+# ─────────────────────────────────────────────
+
+@cli.group()
+def vfs():
+    """VFS blob storage operations."""
+    pass
+
+@vfs.command("ls")
+@click.argument("session_id")
+def vfs_ls(session_id):
+    """List VFS blobs for a session."""
+    conn = db()
+    rows = conn.execute(
+        """SELECT id, source_type, filename, size_bytes, sha256, ingested_at
+           FROM vfs WHERE session_id LIKE ? ORDER BY source_type, filename""",
+        (f"{session_id}%",)
+    ).fetchall()
+    conn.close()
+    click.echo()
+    click.echo(bold(f"  {len(rows)} VFS blobs for {cyan(session_id[:16])}"))
+    click.echo(hr())
+    for r in rows:
+        click.echo(
+            f"  {bold(str(r['id'])):>8}  "
+            f"{yellow(r['source_type']):<18}  "
+            f"{r['filename']:<35}  "
+            f"{fmt_size(r['size_bytes']):>10}  "
+            f"{dim(r['sha256'])}"
+        )
+    click.echo()
+
+@vfs.command("cat")
+@click.argument("vfs_id", type=int)
+@click.option("--raw", "-r", is_flag=True, help="Print raw bytes (hex)")
+@click.option("--lines", "-n", default=0, type=int, help="Limit output lines")
+def vfs_cat(vfs_id, raw, lines):
+    """Print decompressed content of a VFS blob."""
+    conn = db()
+    row = conn.execute(
+        "SELECT source_type, filename, content, size_bytes FROM vfs WHERE id=?", (vfs_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        click.echo(red(f"  VFS blob {vfs_id} not found"))
+        return
+    try:
+        data = gzip.decompress(row['content'])
+    except Exception:
+        data = row['content']
+
+    click.echo()
+    click.echo(bold(f"  VFS {vfs_id}  {yellow(row['source_type'])}  {row['filename']}  {fmt_size(row['size_bytes'])}"))
+    click.echo(hr())
+
+    if raw:
+        click.echo(data.hex())
+        return
+
+    text = data.decode('utf-8', errors='replace')
+    if lines > 0:
+        output_lines = text.splitlines()[:lines]
+        text = "\n".join(output_lines)
+    click.echo(text)
+
+@vfs.command("types")
+def vfs_types():
+    """Summary of VFS blob types and sizes."""
+    conn = db()
+    rows = conn.execute(
+        "SELECT source_type, COUNT(*) n, SUM(size_bytes) total, SUM(LENGTH(content)) compressed FROM vfs GROUP BY source_type ORDER BY total DESC"
+    ).fetchall()
+    conn.close()
+    click.echo()
+    click.echo(bold("  VFS storage summary"))
+    click.echo(hr())
+    for r in rows:
+        ratio = (r['compressed'] / r['total'] * 100) if r['total'] else 0
+        click.echo(
+            f"  {yellow(r['source_type']):<22}  "
+            f"{r['n']:>6} blobs  "
+            f"{fmt_size(r['total']):>10} raw  "
+            f"{fmt_size(r['compressed']):>10} stored  "
+            f"{dim(f'{ratio:.0f}% ratio')}"
+        )
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# POLICY
+# ─────────────────────────────────────────────
+
+@cli.group()
+def policy():
+    """Manage data access policies."""
+    pass
+
+@policy.command("allow")
+@click.argument("pattern")
+def policy_allow(pattern):
+    """Add an allow pattern for search results."""
+    # For now, store in a simple text file
+    policy_file = ARK_DIR / "policy.txt"
+    try:
+        with open(policy_file, "a") as f:
+            f.write(f"ALLOW {pattern}\n")
+        click.echo(green(f"  Added allow pattern: {pattern}"))
+    except Exception as e:
+        click.echo(red(f"  Error: {e}"))
+
+@policy.command("deny")
+@click.argument("pattern")
+def policy_deny(pattern):
+    """Add a deny pattern for search results."""
+    policy_file = ARK_DIR / "policy.txt"
+    try:
+        with open(policy_file, "a") as f:
+            f.write(f"DENY {pattern}\n")
+        click.echo(green(f"  Added deny pattern: {pattern}"))
+    except Exception as e:
+        click.echo(red(f"  Error: {e}"))
+
+@policy.command("list")
+def policy_list():
+    """List current policies."""
+    policy_file = ARK_DIR / "policy.txt"
+    if not policy_file.exists():
+        click.echo(dim("  No policies configured"))
+        return
+
+    click.echo()
+    click.echo(bold("  Data Access Policies"))
+    click.echo(hr())
+    try:
+        with open(policy_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("ALLOW "):
+                    click.echo(green(f"  ALLOW {line[6:]}"))
+                elif line.startswith("DENY "):
+                    click.echo(red(f"  DENY {line[5:]}"))
+    except Exception as e:
+        click.echo(red(f"  Error reading policies: {e}"))
+    click.echo()
+
+def check_policy(text):
+    """Check if text passes policy filters. Returns True if allowed."""
+    policy_file = ARK_DIR / "policy.txt"
+    if not policy_file.exists():
+        return True  # No policies = allow all
+
+    allow_patterns = []
+    deny_patterns = []
+    try:
+        with open(policy_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("ALLOW "):
+                    allow_patterns.append(line[6:])
+                elif line.startswith("DENY "):
+                    deny_patterns.append(line[5:])
+
+        # Check deny patterns first - if any match, deny
+        for deny in deny_patterns:
+            if deny in text:
+                return False
+
+        # If no allow patterns, allow (since deny check passed)
+        if not allow_patterns:
+            return True
+
+        # If allow patterns exist, check if any match
+        for allow in allow_patterns:
+            if allow in text:
+                return True
+
+        # Allow patterns exist but none match - deny
+        return False
+
+    except Exception:
+        return True  # On error, allow
+
+
+# ─────────────────────────────────────────────
+@cli.command()
+@click.argument("pattern")
+@click.option("--symbol", "-s", is_flag=True, help="Search symbols only")
+@click.option("--path", "-p", type=str, help="Filter by file path pattern")
+@click.option("--regex", "-r", is_flag=True, help="Treat pattern as regex")
+@click.option("--workspace", "-w", type=str, help="Filter by workspace ID")
+@click.option("--limit", "-l", type=int, default=50, help="Max results")
+def code_search(pattern, symbol, path, regex, workspace, limit):
+    """Search code symbols and content using AST-indexed data."""
+    conn = db()
+
+    # If symbol search, use symbols table
+    if symbol:
+        try:
+            query = "SELECT file_path, symbol_name, symbol_type, line_number, context FROM symbols WHERE 1=1"
+            params = []
+
+            if workspace:
+                query += " AND workspace_id LIKE ?"
+                params.append(f"{workspace}%")
+
+            if regex:
+                # For regex, we'd need more complex logic - for now, use LIKE
+                query += " AND symbol_name LIKE ?"
+                params.append(f"%{pattern}%")
+            else:
+                query += " AND symbol_name LIKE ?"
+                params.append(f"%{pattern}%")
+
+            if path:
+                query += " AND file_path LIKE ?"
+                params.append(f"%{path}%")
+
+            query += f" ORDER BY symbol_name LIMIT {limit}"
+
+            rows = conn.execute(query, params).fetchall()
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                click.echo(yellow("  Symbols table not yet created. Run 'python extract.py' to initialize."))
+                conn.close()
+                return
+            raise
+        conn.close()
+
+        if not rows:
+            click.echo(dim(f"  No symbols found matching '{pattern}'"))
+            return
+
+        click.echo()
+        click.echo(bold(f"  Code symbols ({len(rows)} results)"))
+        click.echo(hr())
+        for r in rows:
+            click.echo(f"  {cyan(r['symbol_type']):<10} {bold(r['symbol_name']):<30} {dim(r['file_path'])}:{r['line_number']}")
+            if r['context']:
+                click.echo(f"    {dim(truncate(r['context'], 100))}")
+        click.echo()
+
+    else:
+        # Content search - for now, search VFS text content
+        # TODO: Integrate with Nyx AST scanner for full code search
+        click.echo(yellow("  Content search not yet implemented - use --symbol for symbol search"))
+        click.echo(f"  Try: {bold('cda code-search <pattern> --symbol')}")
+        conn.close()
+
+
+# ─────────────────────────────────────────────
+# EXPORT
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("session_id")
+@click.option("--output", "-o", default=None, help="Output file path (default: stdout)")
+@click.option("--format", "-f", "fmt", type=click.Choice(["json", "jsonl", "text"]), default="json")
+def export(session_id, output, fmt):
+    """Export a session as JSON, JSONL, or text."""
+    conn = db()
+    meta = conn.execute(
+        "SELECT * FROM sessions WHERE session_id LIKE ?", (f"{session_id}%",)
+    ).fetchone()
+    if not meta:
+        click.echo(red(f"  Session not found: {session_id}"))
+        conn.close()
+        return
+
+    sid = meta['session_id']
+    rows = conn.execute(
+        "SELECT * FROM exchanges WHERE session_id=? ORDER BY exchange_index", (sid,)
+    ).fetchall()
+
+    # Parse tool_calls JSON
+    exchanges = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d['tool_calls'] = json.loads(d['tool_calls'] or "[]")
+        except Exception:
+            d['tool_calls'] = []
+        try:
+            d['attachments'] = json.loads(d['attachments'] or "[]")
+        except Exception:
+            d['attachments'] = []
+        exchanges.append(d)
+
+    conn.close()
+
+    if fmt == "json":
+        out = json.dumps({
+            "session_id": sid,
+            "title": meta['title'],
+            "created_at": meta['created_at'],
+            "workspace_id": meta['workspace_id'],
+            "exchanges": exchanges
+        }, indent=2)
+    elif fmt == "jsonl":
+        out = "\n".join(json.dumps(e) for e in exchanges)
+    else:
+        lines = [f"SESSION: {meta['title']}", f"ID: {sid}", f"Date: {fmt_ts(meta['created_at'])}", ""]
+        for ex in exchanges:
+            if ex['user_message']:
+                lines.append(f"YOU [{ex['exchange_index']}] {ex['user_ts']}")
+                lines.append(ex['user_message'])
+                lines.append("")
+            if ex['response_text']:
+                lines.append("CDA")
+                lines.append(ex['response_text'])
+                lines.append("")
+            lines.append("─" * 60)
+            lines.append("")
+        out = "\n".join(lines)
+
+    if output:
+        Path(output).write_text(out)
+        click.echo(green(f"  Exported to {output}"))
+    else:
+        click.echo(out)
+
+
+# ─────────────────────────────────────────────
+# RAW SQL QUERY
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("sql")
+@click.option("--limit", "-n", default=50)
+def query(sql, limit):
+    """Run a raw SQL query against the DB."""
+    if "LIMIT" not in sql.upper():
+        sql = sql.rstrip(";") + f" LIMIT {limit}"
+    conn = db()
+    try:
+        rows = conn.execute(sql).fetchall()
+        conn.close()
+    except Exception as e:
+        click.echo(red(f"  SQL error: {e}"))
+        conn.close()
+        return
+
+    if not rows:
+        click.echo(dim("  (0 rows)"))
+        return
+
+    keys = rows[0].keys()
+    click.echo()
+    click.echo(bold("  " + "  ".join(str(k)[:20] for k in keys)))
+    click.echo(hr())
+    for r in rows:
+        click.echo("  " + "  ".join(truncate(str(r[k]), 30) for k in keys))
+    click.echo(dim(f"\n  {len(rows)} rows"))
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# BEHAVIORAL SIGNALS
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("session_id", required=False, default=None)
+@click.option("--type", "-t", "sig_type", default=None,
+              help="Filter: correction|redirect|affirmation|approval|question")
+@click.option("--limit", "-n", default=40)
+def signals(session_id, sig_type, limit):
+    """Show behavioral signals extracted from sessions."""
+    conn = db()
+    where = []
+    args = []
+    if session_id:
+        where.append("s.session_id LIKE ?")
+        args.append(session_id + "%")
+    if sig_type:
+        where.append("s.signal_type = ?")
+        args.append(sig_type)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    sql = f"""
+        SELECT s.signal_type, s.matched_keyword, s.user_message,
+               s.session_id, s.ts
+        FROM exchange_signals s
+        {clause}
+        ORDER BY s.ts DESC
+        LIMIT {limit}
+    """
+    rows = conn.execute(sql, args).fetchall()
+    conn.close()
+
+    if not rows:
+        click.echo(dim("  (no signals found)"))
+        return
+
+    click.echo()
+    TYPE_COLOR = {
+        'correction':  red,
+        'redirect':    yellow,
+        'affirmation': green,
+        'approval':    cyan,
+        'question':    bold,
+    }
+    for r in rows:
+        t = r['signal_type']
+        colorize = TYPE_COLOR.get(t, lambda x: x)
+        label = colorize(f"[{t:<12}]")
+        kw = dim(f"  kw={r['matched_keyword']:<20}")
+        sid_short = r['session_id'][:8]
+        msg = truncate(r['user_message'] or '', 80)
+        click.echo(f"  {label}{kw}  {dim(sid_short)}  {msg}")
+    click.echo()
+
+    # Summary by type
+    conn = db()
+    by_type = conn.execute(
+        f"""SELECT signal_type, COUNT(*) as n FROM exchange_signals
+            {'WHERE session_id LIKE ?' if session_id else ''}
+            GROUP BY signal_type ORDER BY n DESC""",
+        ([session_id + "%"] if session_id else [])
+    ).fetchall()
+    conn.close()
+    click.echo(bold("  Signal totals:"))
+    for r in by_type:
+        bar = "█" * min(r['n'], 40)
+        click.echo(f"    {r['signal_type']:<14} {r['n']:>5}  {dim(bar)}")
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# COMPACTION HISTORY
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("session_id", required=False, default=None)
+@click.option("--full", "-f", is_flag=True, help="Show full summary text")
+@click.option("--limit", "-n", default=20)
+def compactions(session_id, full, limit):
+    """Show context compaction events (model self-summaries)."""
+    conn = db()
+    where = "WHERE session_id LIKE ?" if session_id else ""
+    args = [session_id + "%"] if session_id else []
+    sql = f"""
+        SELECT session_id, turn_index, summary_length,
+               context_length_before, num_rounds, summary_model,
+               duration_ms, summary_text, ts
+        FROM compactions
+        {where}
+        ORDER BY ts DESC
+        LIMIT {limit}
+    """
+    rows = conn.execute(sql, args).fetchall()
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM compactions {where}", args
+    ).fetchone()[0] if not session_id else None
+    conn.close()
+
+    if not rows:
+        click.echo(dim("  (no compactions found)"))
+        return
+
+    click.echo()
+    click.echo(bold(f"  {'session':<10}  {'turn':>4}  {'ctx_before':>10}  {'rounds':>6}  {'model':<25}  {'summary_len':>11}"))
+    click.echo(hr())
+    for r in rows:
+        sid_short = r['session_id'][:8]
+        model = truncate(r['summary_model'] or 'unknown', 25)
+        ctx = f"{r['context_length_before']:,}" if r['context_length_before'] else '-'
+        click.echo(
+            f"  {dim(sid_short):<10}  {(r['turn_index'] or 0):>4}  {ctx:>10}  "
+            f"{(r['num_rounds'] or 0):>6}  {model:<25}  {(r['summary_length'] or 0):>11,}"
+        )
+        if full and r['summary_text']:
+            wrapped = textwrap.fill(r['summary_text'][:800], width=90, initial_indent='    ', subsequent_indent='    ')
+            click.echo(dim(wrapped))
+            click.echo()
+
+    click.echo()
+    if total:
+        click.echo(dim(f"  {total} total compaction events across all sessions"))
+    click.echo()
+
+# ─────────────────────────────────────────────
+# BEHAVIOR REPORT
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.option("--limit", "-n", default=20, help="Top N sessions to show")
+def behavior(limit):
+    """Aggregate behavioral intelligence report across all sessions."""
+    conn = db()
+
+    # Overall signal totals
+    sig_totals = conn.execute(
+        "SELECT signal_type, COUNT(*) as n FROM exchange_signals GROUP BY signal_type ORDER BY n DESC"
+    ).fetchall()
+
+    # Top correction keywords
+    top_kw = conn.execute(
+        """SELECT matched_keyword, COUNT(*) as n FROM exchange_signals
+           WHERE signal_type='correction'
+           GROUP BY matched_keyword ORDER BY n DESC LIMIT 15"""
+    ).fetchall()
+
+    # Sessions with most corrections
+    worst_sessions = conn.execute(
+        f"""SELECT sa.session_id, sa.total_corrections, sa.total_redirects,
+                   sa.total_affirmations, sa.compaction_count,
+                   sa.total_tokens_prompt, sa.total_tokens_completion
+            FROM session_analysis sa
+            WHERE sa.total_corrections > 0
+            ORDER BY sa.total_corrections DESC
+            LIMIT {limit}"""
+    ).fetchall()
+
+    # Session health summary
+    health = conn.execute(
+        """SELECT
+             COUNT(*) as total,
+             SUM(clean_run) as clean,
+             SUM(CASE WHEN total_corrections > 0 THEN 1 ELSE 0 END) as corrected,
+             SUM(total_corrections) as total_corrections,
+             SUM(total_affirmations) as total_affirmations,
+             SUM(compaction_count) as total_compactions,
+             AVG(total_tokens_prompt) as avg_prompt_tokens
+           FROM session_analysis"""
+    ).fetchone()
+
+    # Most common model
+    models = conn.execute(
+        "SELECT model_ids, COUNT(*) as n FROM session_analysis WHERE model_ids != '' GROUP BY model_ids ORDER BY n DESC LIMIT 5"
+    ).fetchall()
+
+    conn.close()
+
+    click.echo()
+    click.echo(bold("══════════════════════════════════════════"))
+    click.echo(bold("  BEHAVIORAL INTELLIGENCE REPORT"))
+    click.echo(bold("══════════════════════════════════════════"))
+    click.echo()
+
+    if health and health['total']:
+        click.echo(bold("  Session Health:"))
+        click.echo(f"    Total sessions analyzed:  {health['total']}")
+        pct_clean = 100 * (health['clean'] or 0) / health['total']
+        pct_corrected = 100 * (health['corrected'] or 0) / health['total']
+        click.echo(f"    Clean runs (0 corrections): {health['clean']}  ({pct_clean:.0f}%)")
+        click.echo(f"    Sessions with corrections:  {health['corrected']}  ({pct_corrected:.0f}%)")
+        click.echo(f"    Total corrections issued:   {red(str(health['total_corrections'] or 0))}")
+        click.echo(f"    Total affirmations:         {green(str(health['total_affirmations'] or 0))}")
+        click.echo(f"    Total compactions:          {health['total_compactions'] or 0}")
+        avg_pt = health['avg_prompt_tokens']
+        if avg_pt:
+            click.echo(f"    Avg prompt tokens/session:  {avg_pt:,.0f}")
+        click.echo()
+
+    if sig_totals:
+        click.echo(bold("  Signal Distribution:"))
+        for r in sig_totals:
+            bar = "█" * min(r['n'] // 5, 50)
+            color = red if r['signal_type'] == 'correction' else (green if r['signal_type'] == 'affirmation' else dim)
+            click.echo(f"    {r['signal_type']:<14} {r['n']:>5}  {color(bar)}")
+        click.echo()
+
+    if top_kw:
+        click.echo(bold("  Top Correction Triggers (what you typed to stop me):"))
+        for r in top_kw:
+            click.echo(f"    {r['n']:>4}×  {red(repr(r['matched_keyword']))}")
+        click.echo()
+
+    if models:
+        click.echo(bold("  Models Used:"))
+        for r in models:
+            click.echo(f"    {r['n']:>4} sessions  {r['model_ids']}")
+        click.echo()
+
+    if worst_sessions:
+        click.echo(bold(f"  Sessions With Most Corrections (top {limit}):"))
+        click.echo(bold(f"    {'session':<10}  {'corr':>5}  {'redir':>6}  {'affirm':>7}  {'compact':>8}  {'prompt_tok':>12}"))
+        click.echo("    " + "─" * 65)
+        for r in worst_sessions:
+            sid_short = r['session_id'][:8]
+            pt = f"{r['total_tokens_prompt']:,}" if r['total_tokens_prompt'] else '-'
+            click.echo(
+                f"    {dim(sid_short):<10}  {red(str(r['total_corrections'])):>5}  "
+                f"{str(r['total_redirects'] or 0):>6}  {green(str(r['total_affirmations'] or 0)):>7}  "
+                f"{str(r['compaction_count'] or 0):>8}  {pt:>12}"
+            )
+        click.echo()
+
+
+# ─────────────────────────────────────────────
+# HEAT — Frustration + Pre-correction analysis
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("session_id", required=False, default=None)
+@click.option("--limit", "-n", default=20, help="Top N sessions")
+@click.option("--signals", "show_signals", is_flag=True, default=False, help="Show raw signal messages")
+def heat(session_id, limit, show_signals):
+    """Frustration and pre-correction signal analysis.
+
+    With no args: show hottest sessions ranked by heat_score.
+    With SESSION_ID: drill into that session's signals.
+    """
+    conn = db()
+
+    if session_id:
+        # Drill into one session
+        sid_like = session_id + "%"
+        sa = conn.execute(
+            """SELECT session_id, total_corrections, total_frustrations,
+                      total_pre_corrections, total_redirects, heat_score
+               FROM session_analysis WHERE session_id LIKE ?""",
+            (sid_like,)
+        ).fetchone()
+        if not sa:
+            click.echo(dim(f"  no data for session {session_id}"))
+            conn.close()
+            return
+
+        click.echo()
+        click.echo(bold(f"  Heat report: {dim(sa['session_id'][:16])}"))
+        click.echo(f"    heat_score:       {_heat_bar(sa['heat_score'])}")
+        click.echo(f"    corrections:      {red(str(sa['total_corrections'] or 0))}")
+        click.echo(f"    frustrations:     {red(str(sa['total_frustrations'] or 0))}")
+        click.echo(f"    pre-corrections:  {str(sa['total_pre_corrections'] or 0)}")
+        click.echo(f"    redirects:        {str(sa['total_redirects'] or 0)}")
+        click.echo()
+
+        # Show signals grouped by type
+        for sig_type in ('frustration', 'pre_correction', 'correction'):
+            rows = conn.execute(
+                """SELECT matched_keyword, user_message, ts
+                   FROM exchange_signals
+                   WHERE session_id LIKE ? AND signal_type=?
+                   ORDER BY ts""",
+                (sid_like, sig_type)
+            ).fetchall()
+            if not rows:
+                continue
+            color = red if sig_type in ('frustration', 'correction') else dim
+            click.echo(bold(f"  {sig_type.upper()} ({len(rows)}):"))
+            for r in rows:
+                kw = r['matched_keyword'] or ''
+                msg = (r['user_message'] or '')[:120]
+                click.echo(f"    {color('[' + kw + ']'):<28} {dim(msg)}")
+            click.echo()
+
+    else:
+        # Global hottest sessions
+        rows = conn.execute(
+            f"""SELECT sa.session_id, sa.heat_score,
+                       sa.total_corrections, sa.total_frustrations,
+                       sa.total_pre_corrections, sa.total_redirects,
+                       sa.total_affirmations, sa.compaction_count
+                FROM session_analysis sa
+                WHERE sa.heat_score > 0
+                ORDER BY sa.heat_score DESC
+                LIMIT {limit}"""
+        ).fetchall()
+
+        # Global frustration keyword frequency
+        top_frustration_kw = conn.execute(
+            """SELECT matched_keyword, COUNT(*) as n
+               FROM exchange_signals
+               WHERE signal_type IN ('frustration', 'pre_correction')
+               GROUP BY matched_keyword ORDER BY n DESC LIMIT 12"""
+        ).fetchall()
+
+        # Global totals
+        totals = conn.execute(
+            """SELECT
+                 SUM(total_frustrations) as tf,
+                 SUM(total_pre_corrections) as tpc,
+                 COUNT(CASE WHEN heat_score >= 20 THEN 1 END) as hot_sessions,
+                 COUNT(CASE WHEN heat_score >= 50 THEN 1 END) as very_hot,
+                 AVG(heat_score) as avg_heat
+               FROM session_analysis"""
+        ).fetchone()
+
+        conn.close()
+
+        click.echo()
+        click.echo(bold("══════════════════════════════════════════"))
+        click.echo(bold("  HEAT REPORT — Frustration Intelligence"))
+        click.echo(bold("══════════════════════════════════════════"))
+        click.echo()
+
+        if totals:
+            click.echo(bold("  Overview:"))
+            click.echo(f"    Total frustration signals:   {red(str(int(totals['tf'] or 0)))}")
+            click.echo(f"    Total pre-correction signals:{str(int(totals['tpc'] or 0))}")
+            click.echo(f"    Sessions with heat ≥ 20:     {str(int(totals['hot_sessions'] or 0))}")
+            click.echo(f"    Sessions with heat ≥ 50:     {red(str(int(totals['very_hot'] or 0)))}")
+            click.echo(f"    Average heat score:          {totals['avg_heat']:.1f}" if totals['avg_heat'] else "")
+            click.echo()
+
+        if top_frustration_kw:
+            click.echo(bold("  Top Frustration Triggers:"))
+            for r in top_frustration_kw:
+                bar = "█" * min(r['n'], 30)
+                click.echo(f"    {r['n']:>4}×  {red(repr(r['matched_keyword'])):<32} {dim(bar)}")
+            click.echo()
+
+        if rows:
+            click.echo(bold(f"  Hottest Sessions (top {limit}):"))
+            click.echo(bold(f"    {'session':<10}  {'heat':>6}  {'corr':>5}  {'frust':>6}  {'pre':>4}  {'redir':>5}  {'affirm':>7}"))
+            click.echo("    " + "─" * 60)
+            for r in rows:
+                sid_short = r['session_id'][:8]
+                heat_val = r['heat_score'] or 0
+                heat_str = red(str(heat_val)) if heat_val >= 50 else (str(heat_val) if heat_val >= 20 else dim(str(heat_val)))
+                click.echo(
+                    f"    {dim(sid_short):<10}  {heat_str:>6}  "
+                    f"{red(str(r['total_corrections'] or 0)):>5}  "
+                    f"{red(str(r['total_frustrations'] or 0)):>6}  "
+                    f"{str(r['total_pre_corrections'] or 0):>4}  "
+                    f"{str(r['total_redirects'] or 0):>5}  "
+                    f"{green(str(r['total_affirmations'] or 0)):>7}"
+                )
+            click.echo()
+        return
+
+    conn.close()
+
+
+def _heat_bar(score):
+    """Visual heat bar for a score 0-100."""
+    score = score or 0
+    filled = min(score // 5, 20)
+    bar = "█" * filled + "░" * (20 - filled)
+    label = f"{score:>3}/100"
+    if score >= 50:
+        return red(f"{bar} {label}")
+    elif score >= 20:
+        return f"{bar} {label}"
+    else:
+        return dim(f"{bar} {label}")
+
+
+# ─────────────────────────────────────────────
+# SAVED SESSIONS
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.option("--limit", "-n", default=20, help="Top N sessions")
+@click.option("--min-heat", default=25, help="Minimum peak_heat to qualify")
+@click.option("--show-antidote", "show_antidote", is_flag=True, default=False,
+              help="Show full turning-point message text")
+def saved(limit, min_heat, show_antidote):
+    """Saved sessions — heat that recovered. The Antidote catalog.
+
+    Shows sessions where heat peaked then the session recovered with
+    affirmations/approvals. The turning_point message is the exact
+    correction that worked — the Antidote.
+    """
+    conn = db()
+
+    rows = conn.execute(
+        f"""SELECT sa.session_id, sa.heat_score, sa.peak_heat, sa.final_heat,
+                   sa.total_corrections, sa.total_frustrations, sa.total_pre_corrections,
+                   sa.total_affirmations, sa.compaction_count,
+                   sa.turning_point_ts, sa.turning_point_text
+            FROM session_analysis sa
+            WHERE sa.saved_session = 1 AND sa.peak_heat >= {min_heat}
+            ORDER BY sa.peak_heat DESC
+            LIMIT {limit}"""
+    ).fetchall()
+
+    # Global stats
+    stats = conn.execute(
+        f"""SELECT
+              COUNT(*) as total_saved,
+              AVG(peak_heat) as avg_peak,
+              MAX(peak_heat) as max_peak,
+              SUM(total_corrections + total_frustrations + total_pre_corrections) as total_heat_signals,
+              COUNT(CASE WHEN peak_heat >= 50 THEN 1 END) as very_hot_saved
+            FROM session_analysis
+            WHERE saved_session = 1 AND peak_heat >= {min_heat}"""
+    ).fetchone()
+
+    # Turning-point signal type breakdown — what kind of message saved them?
+    antidote_types = conn.execute(
+        """SELECT es.signal_type, COUNT(*) as n
+           FROM session_analysis sa
+           JOIN exchange_signals es
+             ON es.session_id = sa.session_id AND es.ts = sa.turning_point_ts
+           WHERE sa.saved_session = 1
+           GROUP BY es.signal_type ORDER BY n DESC"""
+    ).fetchall()
+
+    # Top matched keywords at turning points
+    antidote_kws = conn.execute(
+        """SELECT es.matched_keyword, es.signal_type, COUNT(*) as n
+           FROM session_analysis sa
+           JOIN exchange_signals es
+             ON es.session_id = sa.session_id AND es.ts = sa.turning_point_ts
+           WHERE sa.saved_session = 1 AND es.matched_keyword IS NOT NULL
+           GROUP BY es.matched_keyword ORDER BY n DESC LIMIT 15"""
+    ).fetchall()
+
+    conn.close()
+
+    click.echo()
+    click.echo(bold("══════════════════════════════════════════════"))
+    click.echo(bold("  SAVED SESSIONS — The Antidote Catalog"))
+    click.echo(bold("══════════════════════════════════════════════"))
+    click.echo()
+
+    if stats and stats['total_saved']:
+        click.echo(bold("  Recovery Stats:"))
+        click.echo(f"    Saved sessions:            {green(str(stats['total_saved']))}")
+        click.echo(f"    Very hot saved (≥50):      {green(str(stats['very_hot_saved'] or 0))}")
+        click.echo(f"    Avg peak heat:             {stats['avg_peak']:.1f}" if stats['avg_peak'] else "")
+        click.echo(f"    Max peak heat:             {red(str(int(stats['max_peak'] or 0)))}")
+        click.echo(f"    Total heat signals:        {str(int(stats['total_heat_signals'] or 0))}")
+        click.echo()
+    else:
+        click.echo(dim(f"  No saved sessions found with peak_heat >= {min_heat}"))
+        click.echo(dim("  Try --min-heat 15 to lower the threshold"))
+        return
+
+    if antidote_types:
+        click.echo(bold("  Antidote Signal Types (what kind of message saved the session):"))
+        for r in antidote_types:
+            bar = "█" * min(r['n'], 25)
+            click.echo(f"    {r['n']:>4}×  {r['signal_type']:<20} {dim(bar)}")
+        click.echo()
+
+    if antidote_kws:
+        click.echo(bold("  Top Antidote Keywords (the phrases that worked):"))
+        for r in antidote_kws:
+            click.echo(f"    {r['n']:>4}×  {green(repr(r['matched_keyword'])):<30}  {dim(r['signal_type'])}")
+        click.echo()
+
+    if rows:
+        click.echo(bold(f"  Saved Sessions (top {limit}, ranked by peak heat):"))
+        click.echo(bold(f"    {'session':<10}  {'peak':>5}  {'corr':>5}  {'frust':>6}  {'pre':>4}  {'affirm':>7}  {'compact':>8}"))
+        click.echo("    " + "─" * 62)
+        for r in rows:
+            sid_short = r['session_id'][:8]
+            peak = r['peak_heat'] or 0
+            peak_str = red(str(peak)) if peak >= 50 else str(peak)
+            click.echo(
+                f"    {dim(sid_short):<10}  {peak_str:>5}  "
+                f"{red(str(r['total_corrections'] or 0)):>5}  "
+                f"{red(str(r['total_frustrations'] or 0)):>6}  "
+                f"{str(r['total_pre_corrections'] or 0):>4}  "
+                f"{green(str(r['total_affirmations'] or 0)):>7}  "
+                f"{str(r['compaction_count'] or 0):>8}"
+            )
+            if show_antidote and r['turning_point_text']:
+                # Show the turning-point message (the Antidote)
+                msg = r['turning_point_text'][:200].replace('\n', ' ')
+                click.echo(f"        {bold('Antidote:')} {dim(msg)}")
+            click.echo()
+    click.echo()
+
+
+# ─────────────────────────────────────────────
+# TOKEN USAGE
+# ─────────────────────────────────────────────
+
+@cli.command()
+@click.argument("session_id", required=False, default=None)
+@click.option("--limit", "-n", default=30)
+def tokens(session_id, limit):
+    """Show per-request token usage for a session (or aggregate summary)."""
+    conn = db()
+
+    if session_id:
+        rows = conn.execute(
+            """SELECT turn_index, prompt_tokens, output_tokens, model_id, ts
+               FROM token_usage WHERE session_id LIKE ?
+               ORDER BY turn_index LIMIT ?""",
+            (session_id + "%", limit)
+        ).fetchall()
+        conn.close()
+        if not rows:
+            click.echo(dim("  (no token data)"))
+            return
+        click.echo()
+        click.echo(bold(f"  Token usage — session {session_id[:16]}"))
+        click.echo(bold(f"  {'turn':>5}  {'prompt':>9}  {'output':>8}  model"))
+        click.echo(hr())
+        total_p = total_o = 0
+        for r in rows:
+            total_p += r['prompt_tokens'] or 0
+            total_o += r['output_tokens'] or 0
+            model_short = (r['model_id'] or 'unknown')[:30]
+            click.echo(f"  {r['turn_index']:>5}  {(r['prompt_tokens'] or 0):>9,}  {(r['output_tokens'] or 0):>8,}  {dim(model_short)}")
+        click.echo(hr())
+        click.echo(bold(f"  {'TOTAL':>5}  {total_p:>9,}  {total_o:>8,}"))
+        click.echo()
+    else:
+        # Aggregate across all sessions
+        rows = conn.execute(
+            f"""SELECT sa.session_id, sa.total_tokens_prompt, sa.total_tokens_completion,
+                       sa.compaction_count, sa.total_corrections, sa.model_ids
+                FROM session_analysis sa
+                WHERE sa.total_tokens_prompt > 0
+                ORDER BY sa.total_tokens_prompt DESC LIMIT {limit}"""
+        ).fetchall()
+        totals = conn.execute(
+            "SELECT SUM(total_tokens_prompt), SUM(total_tokens_completion) FROM session_analysis"
+        ).fetchone()
+        conn.close()
+
+        if not rows:
+            click.echo(dim("  (no token data)"))
+            return
+        click.echo()
+        click.echo(bold("  Top sessions by token usage:"))
+        click.echo(bold(f"  {'session':<10}  {'prompt':>12}  {'output':>9}  {'compactions':>12}  {'corrections':>12}"))
+        click.echo(hr())
+        for r in rows:
+            sid_short = r['session_id'][:8]
+            pt = f"{r['total_tokens_prompt']:,}" if r['total_tokens_prompt'] else '-'
+            ot = f"{r['total_tokens_completion']:,}" if r['total_tokens_completion'] else '-'
+            click.echo(
+                f"  {dim(sid_short):<10}  {pt:>12}  {ot:>9}  "
+                f"{(r['compaction_count'] or 0):>12}  {(r['total_corrections'] or 0):>12}"
+            )
+        if totals and totals[0]:
+            click.echo(hr())
+            click.echo(bold(f"  {'ALL':>10}  {totals[0]:>12,}  {(totals[1] or 0):>9,}"))
+        click.echo()
+
+
+# ─────────────────────────────────────────────
+# ENTRY
+# ─────────────────────────────────────────────
+
+def main():
+    """Main entry point for the CLI."""
+    cli()
+
+if __name__ == "__main__":
+    main()

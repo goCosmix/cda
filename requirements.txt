@@ -1,0 +1,13 @@
+# Runtime dependencies
+watchfiles>=0.20
+click>=8.0
+
+# Development dependencies
+pytest>=7.0
+pytest-cov
+black
+isort
+flake8
+mypy
+build
+twine

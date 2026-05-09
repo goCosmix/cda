@@ -5,21 +5,32 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vscode-ark"
 version = "0.1.0"
-description = "VS Code/Copilot Chat session intelligence analysis system"
+description = "Comprehensive analysis system for VS Code/Copilot Chat sessions with behavioral signal extraction and heat scoring"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.8"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+maintainers = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+keywords = ["vscode", "copilot", "chat", "analysis", "behavioral", "signals", "heat-score", "ai", "conversation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Logging",
 ]
 dependencies = [
     "watchfiles>=0.20",
@@ -47,6 +58,8 @@ cda = "vscode_ark.cli:main"
 Homepage = "https://github.com/yourusername/vscode-ark"
 Repository = "https://github.com/yourusername/vscode-ark.git"
 Issues = "https://github.com/yourusername/vscode-ark/issues"
+Documentation = "https://github.com/yourusername/vscode-ark#readme"
+Changelog = "https://github.com/yourusername/vscode-ark/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]

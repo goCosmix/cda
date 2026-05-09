@@ -20,7 +20,7 @@ def test_signal_patterns_import():
         assert len(SIGNAL_PATTERNS) > 0
         # Check structure of first pattern
         pattern = SIGNAL_PATTERNS[0]
-        assert len(pattern) == 4  # (signal_type, keywords, description)
+        assert len(pattern) == 3  # (signal_type, keywords, description)
         assert isinstance(pattern[0], str)  # signal_type
         assert isinstance(pattern[1], list)  # keywords
         assert isinstance(pattern[2], str)  # description
@@ -63,10 +63,10 @@ def test_basic_file_operations():
 
 def test_compress_decompress():
     """Test compression functions"""
-    from ingest import compress, decompress_vfs
-    from reconstruct import decompress_vfs as decompress_vfs_alt
+    from ingest import compress
+    from reconstruct import decompress_vfs
 
-    test_data = b"Hello, World! This is test data for compression."
+    test_data = b"Hello, World! This is test data for compression." * 100  # Make it larger
     compressed = compress(test_data)
     assert len(compressed) < len(test_data)  # Should be smaller
 

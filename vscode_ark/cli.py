@@ -5,7 +5,8 @@ CLI for querying, searching, and managing the vscode-ark session database.
 
 Commands:
   cda search <query>         Full-text search across all exchanges
-  cda sessions               List all sessions (optionally filtered by workspace)
+  cda code-search <pattern>  Search code symbols and content
+  cda sessions               List all sessions (newest first)
   cda session <id>           Show all exchanges in a session
   cda exchange <id> <idx>    Show one full exchange with tool calls
   cda workspaces             List all registered workspaces
@@ -13,16 +14,27 @@ Commands:
   cda memory                 Show all memory files
   cda tools <query>          Search tool call arguments and names
   cda replay <id>            Print a session as a readable conversation
-  cda stats                  System-wide stats
-  cda status                 Watcher daemon status
+  cda stats                  System-wide stats and coverage summary
+  cda status                 Watcher daemon status and queue information
   cda watch start            Start the live watcher daemon
   cda watch stop             Stop the watcher daemon
-  cda sync                   Re-run full ingest (rebuild everything)
-  cda reconstruct            Re-run reconstruction only
-  cda query <sql>            Raw SQL query
-  cda export <id>            Export a session as JSON
+  cda watch restart          Restart the watcher daemon
+  cda sync                   Full re-ingest from disk (rebuilds entire DB)
+  cda reconstruct            Re-run reconstruction and FTS rebuild only
+  cda query <sql>            Raw SQL query against the DB
+  cda export <id>            Export a session as JSON, JSONL, or text
   cda vfs ls <session_id>    List VFS blobs for a session
   cda vfs cat <vfs_id>       Print decompressed content of a VFS blob
+  cda policy allow <pattern> Add an allow pattern for search results
+  cda policy deny <pattern>  Add a deny pattern for search results
+  cda policy list            List current policies
+  cda signals [session]      Show behavioral signals
+  cda heat [session]         Frustration and heat analysis
+  cda behavior               Aggregate behavioral intelligence
+  cda saved                  Sessions that recovered from high heat
+  cda tokens [session]       Token usage analysis
+  cda compactions [session]  Context compaction events
+  cda edits                  Edit session analytics
 """
 
 import os, sys, json, gzip, sqlite3, subprocess, signal, textwrap, time, datetime

@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+- Watcher daemon startup issues with PYTHONPATH and working directory configuration
+- Improved subprocess handling for proper daemon detachment
+
 ### Planned Features
 - Streaming responses for long-running operations
 - Federation context integration

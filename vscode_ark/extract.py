@@ -26,7 +26,8 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, DefaultDict
 from collections import defaultdict
 
-DB_PATH = Path(__file__).parent / "vscode-ark.db"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = ROOT_DIR / "vscode-ark.db"
 
 # ─────────────────────────────────────────────────────────
 # Signal patterns
@@ -562,6 +563,10 @@ def build_session_analysis(conn, session_id):
 def run():
     conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-2000")
+    conn.execute("PRAGMA mmap_size=268435456")
+    conn.execute("PRAGMA temp_store=MEMORY")
 
     # Ensure analysis tables exist
     conn.executescript("""

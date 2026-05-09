@@ -1,6 +1,8 @@
 # Runtime dependencies
 watchfiles>=0.20
 click>=8.0
+sentence-transformers>=2.2.2
+numpy>=1.26
 
 # Development dependencies
 pytest>=7.0

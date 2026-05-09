@@ -31,7 +31,8 @@ log = logging.getLogger("ark-ingest")
 HOME        = Path.home()
 VS_STORAGE  = HOME / "Library/Application Support/Code/User/workspaceStorage"
 GLOBAL_MEM  = HOME / "Library/Application Support/Code/User/globalStorage/github.copilot-chat/memory-tool/memories"
-DB_PATH     = Path(__file__).parent / "vscode-ark.db"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DB_PATH     = ROOT_DIR / "vscode-ark.db"
 
 # Large index DBs — too big to blob, record path only
 SKIP_BLOB_PATTERNS = ["workspace-chunks.db", "local-index"]
@@ -606,6 +607,11 @@ def main():
         print("  dropped existing DB")
 
     conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-2000")
+    conn.execute("PRAGMA mmap_size=268435456")
+    conn.execute("PRAGMA temp_store=MEMORY")
     conn.executescript(SCHEMA)
     conn.commit()
     print("  schema initialized")

@@ -13,7 +13,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                        ▼
         ┌──────────────────────────┐
         │   INGEST STAGE           │
-        │  (ingest.py)             │
+        │  (vscode_ark/ingest.py)   │
         │                          │
         │ - Parse storage files    │
         │ - Gzip compress blobs    │
@@ -34,13 +34,22 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                    ▼
         ┌──────────────────────────┐
         │  RECONSTRUCT STAGE       │
-        │  (reconstruct.py)        │
+        │  (vscode_ark/reconstruct.py)
         │                          │
         │ - Parse exchanges        │
         │ - Link tool calls        │
         │ - Build threads          │
         │ - Create FTS index       │
         └──────────┬───────────────┘
+                   │
+        ┌──────────▼──────────┐
+        │   EMBED STAGE        │
+        │   (vscode_ark/embed.py)
+        │                     │
+        │ - Build miniLM vectors
+        │ - Generate session summaries
+        │ - Create alerts/recommendations
+        └──────────┬──────────┘
                    │
         ┌──────────▼──────────┐
         │   SQLite Database   │
@@ -53,7 +62,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                    ▼
         ┌──────────────────────────┐
         │   EXTRACT STAGE          │
-        │   (extract.py)           │
+        │   (vscode_ark/extract.py)
         │                          │
         │ - Analyze signals        │
         │ - Compute heat scores    │
@@ -73,7 +82,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                    ▼
         ┌──────────────────────────┐
         │   LIVE MONITORING        │
-        │   (watcher.py)           │
+        │   (vscode_ark/watcher.py) │
         │                          │
         │ - Watch file changes     │
         │ - Queue operations       │

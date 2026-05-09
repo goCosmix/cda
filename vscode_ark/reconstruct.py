@@ -15,7 +15,8 @@ Schema added: exchanges
 import sqlite3, json, gzip, time, re
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "vscode-ark.db"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = ROOT_DIR / "vscode-ark.db"
 NOW_MS  = int(time.time() * 1000)
 
 EXCHANGES_SCHEMA = """
@@ -427,6 +428,11 @@ def reconstruct_from_chat_blob(conn, session_id, workspace_id, content):
 
 def main():
     conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-2000")
+    conn.execute("PRAGMA mmap_size=268435456")
+    conn.execute("PRAGMA temp_store=MEMORY")
 
     # Add schema
     conn.executescript(EXCHANGES_SCHEMA)

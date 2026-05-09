@@ -33,9 +33,9 @@ import click
 ARK_DIR  = Path(__file__).resolve().parent.parent
 DB_PATH  = ARK_DIR / "vscode-ark.db"
 PID_FILE = ARK_DIR / "watcher.pid"
-WATCHER  = ARK_DIR / "watcher.py"
-INGEST   = ARK_DIR / "ingest.py"
-RECON    = ARK_DIR / "reconstruct.py"
+WATCHER  = ARK_DIR / "vscode_ark" / "watcher.py"
+INGEST   = ARK_DIR / "vscode_ark" / "ingest.py"
+RECON    = ARK_DIR / "vscode_ark" / "reconstruct.py"
 
 
 # ─────────────────────────────────────────────
@@ -222,6 +222,7 @@ def stats():
 @cli.command()
 def status():
     """Watcher daemon status."""
+    print("STATUS COMMAND CALLED")
     click.echo()
     if PID_FILE.exists():
         pid = PID_FILE.read_text().strip()
@@ -293,6 +294,7 @@ def watch_start():
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
+        env={**os.environ, 'PYTHONPATH': str(ARK_DIR)},
     )
     time.sleep(1.5)
     if PID_FILE.exists():

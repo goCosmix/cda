@@ -35,6 +35,8 @@ classifiers = [
 dependencies = [
     "watchfiles>=0.20",
     "click>=8.0",
+    "sentence-transformers>=2.2.2",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]

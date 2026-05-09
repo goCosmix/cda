@@ -33,7 +33,8 @@ Edit rounds: len(checkpoints) - 1  (first is always "Initial State")
 import sqlite3, gzip, json, re
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "vscode-ark.db"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = ROOT_DIR / "vscode-ark.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS edit_sessions (
@@ -161,6 +162,10 @@ def parse_edit_state(conn, session_id, workspace_id, content):
 def run():
     conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-2000")
+    conn.execute("PRAGMA mmap_size=268435456")
+    conn.execute("PRAGMA temp_store=MEMORY")
     conn.executescript(SCHEMA)
     conn.commit()
 

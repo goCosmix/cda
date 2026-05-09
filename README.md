@@ -12,7 +12,9 @@ A comprehensive data pipeline and analysis system for VS Code/Copilot Chat sessi
 - **Heat Score Computation** - Quantify user frustration and agent performance (0-100 scale)
 - **Real-time Monitoring** - Live sync daemon with crash-resistant queue system
 - **Full-text Search** - FTS5-powered search across all conversations
+- **Semantic Intelligence** - miniLM embeddings, session summaries, related sessions, anomaly alerts, and recommendations
 - **Code Symbol Indexing** - Search functions, classes, and symbols (extensible to AST parsing)
+- **Package-centric Layout** - All runtime code lives under `vscode_ark/` for a clean root.
 - **Policy-based Access Control** - Allow/deny patterns for data filtering
 - **Rich Analytics** - Token usage, context compaction, session recovery analysis
 - **Export Capabilities** - JSON, JSONL, and text export formats
@@ -69,13 +71,26 @@ pip install vscode-ark
    cda watch start
    ```
 
-3. **Explore your data:**
+3. **Build semantic intelligence:**
+   ```bash
+   cda embed build
+   ```
+
+4. **Explore your data:**
    ```bash
    cda stats          # System overview
    cda sessions       # Recent sessions
    cda search "error" # Search conversations
+   cda semantic-search "confused" # Semantic search
    cda heat           # Frustration analysis
    ```
+
+## 🧠 SQLite limits and mitigation
+
+- **Single writer in WAL mode**: the system uses one writer process for ingest/reconstruct/extract/embed and allows many concurrent readers via SQLite WAL.
+- **Large VFS blob handling**: for very large raw artifacts, the clean approach is chunked storage or external file references instead of a single enormous BLOB.
+- **Default 8KB page size / cache**: this code now sets `PRAGMA cache_size=-2000`, `PRAGMA mmap_size=268435456`, and `PRAGMA temp_store=MEMORY` to improve read/cache performance on larger databases.
+- **Further tuning**: rebuild the DB with a larger page size (e.g. `PRAGMA page_size=32768`) if you need more efficient storage for very large session history.
 
 ## 🏗️ Architecture
 
@@ -85,6 +100,8 @@ VS Code Storage → ingest.py → vfs + sessions + transcripts
                reconstruct.py → exchanges (structured conversations)
                       ↓
                extract.py → signals + tokens + heat scores + analysis
+                      ↓
+               embed.py → semantic embeddings + summaries + alerts
                       ↓
                watcher.py → live sync + FTS indexing + queue resilience
                       ↓

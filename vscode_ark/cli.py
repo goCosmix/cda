@@ -21,6 +21,7 @@ Commands:
   cda watch restart          Restart the watcher daemon
   cda sync                   Full re-ingest from disk (rebuilds entire DB)
   cda reconstruct            Re-run reconstruction and FTS rebuild only
+  cda embed build            Build semantic embeddings and session intelligence
   cda query <sql>            Raw SQL query against the DB
   cda export <id>            Export a session as JSON, JSONL, or text
   cda vfs ls <session_id>    List VFS blobs for a session
@@ -35,6 +36,12 @@ Commands:
   cda tokens [session]       Token usage analysis
   cda compactions [session]  Context compaction events
   cda edits                  Edit session analytics
+  cda semantic-search <query> Semantic search using embeddings
+  cda similar <session>      Find sessions similar to a session
+  cda summarize <session>    Show session summary, topics, and recommendations
+  cda topics                 Show semantic topic tags
+  cda alerts <session>       Show semantic anomaly alerts
+  cda recommend <session>    Show session recommendations
 """
 
 import os, sys, json, gzip, sqlite3, subprocess, signal, textwrap, time, datetime
@@ -47,9 +54,11 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 ARK_DIR = PACKAGE_DIR.parent
 DB_PATH = ARK_DIR / "vscode-ark.db"
 PID_FILE = ARK_DIR / "watcher.pid"
-WATCHER = PACKAGE_DIR.parent / "watcher.py"
-INGEST = PACKAGE_DIR.parent / "ingest.py"
-RECON = PACKAGE_DIR.parent / "reconstruct.py"
+WATCHER = PACKAGE_DIR / "watcher.py"
+INGEST = PACKAGE_DIR / "ingest.py"
+RECON = PACKAGE_DIR / "reconstruct.py"
+EXTRACT = PACKAGE_DIR / "extract.py"
+EMBED = PACKAGE_DIR / "embed.py"
 
 
 # ─────────────────────────────────────────────
@@ -131,10 +140,27 @@ def db():
     conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-2000")
+    conn.execute("PRAGMA mmap_size=268435456")
+    conn.execute("PRAGMA temp_store=MEMORY")
     return conn
 
 def short_id(s, n=8):
     return (s or "")[:n]
+
+
+def import_embed_module():
+    try:
+        import importlib
+        import vscode_ark.embed as embed
+        return importlib.reload(embed)
+    except Exception as exc:
+        raise RuntimeError(
+            "Semantic intelligence requires the embed module and its dependencies. "
+            "Install sentence-transformers and retry. "
+            f"Details: {exc}"
+        ) from exc
 
 
 # ─────────────────────────────────────────────
@@ -196,6 +222,10 @@ def stats():
         ("vfs",                "VFS blobs"),
         ("state_items",        "state.vscdb items"),
         ("memory_files",       "Memory files"),
+        ("embeddings",         "Semantic embeddings"),
+        ("session_summaries",  "Session summaries"),
+        ("anomaly_alerts",     "Anomaly alerts"),
+        ("recommendations",    "Recommendations"),
     ]
     for tbl, label in tables:
         try:
@@ -236,6 +266,7 @@ def stats():
 @cli.command()
 def status():
     """Watcher daemon status."""
+    print("STATUS COMMAND CALLED")
     click.echo()
     if PID_FILE.exists():
         pid = PID_FILE.read_text().strip()
@@ -281,6 +312,158 @@ def status():
     click.echo()
 
 
+@cli.group()
+def embed():
+    """Build and inspect semantic intelligence."""
+    pass
+
+
+@embed.command("build")
+def embed_build():
+    """Build semantic embeddings and session intelligence."""
+    click.echo(yellow("  Building semantic intelligence..."))
+    result = subprocess.run([sys.executable, str(EMBED)], capture_output=False)
+    if result.returncode == 0:
+        click.echo(green("  Embed build complete"))
+    else:
+        click.echo(red("  Embed build failed"))
+
+
+@cli.command("semantic-search")
+@click.argument("query")
+@click.option("--limit", default=5, show_default=True, help="Maximum results")
+def semantic_search(query, limit):
+    """Semantic search using embeddings."""
+    try:
+        embed = import_embed_module()
+    except RuntimeError as exc:
+        click.echo(red(str(exc)))
+        return
+    conn = db()
+    results = embed.semantic_search(conn, query, top_k=limit)
+    conn.close()
+    if not results:
+        click.echo(dim("  No semantic results found."))
+        return
+    click.echo(bold(f"  Top {len(results)} semantic matches:"))
+    for idx, (row, score) in enumerate(results, 1):
+        click.echo(f"  {idx}. [{row['entity_type']}] {row['entity_id'][:16]} score={score:.4f}")
+        click.echo(f"      {truncate(row['content_text'], 140)}")
+
+
+@cli.command("similar")
+@click.argument("session_id")
+@click.option("--limit", default=5, show_default=True, help="Maximum similar sessions")
+def similar(session_id, limit):
+    """Find sessions similar to a given session."""
+    try:
+        embed = import_embed_module()
+    except RuntimeError as exc:
+        click.echo(red(str(exc)))
+        return
+    conn = db()
+    results = embed.find_similar_entities(conn, "session", session_id, top_k=limit)
+    conn.close()
+    if not results:
+        click.echo(dim("  No similar sessions found."))
+        return
+    click.echo(bold(f"  Similar sessions to {session_id[:16]}:"))
+    for idx, (row, score) in enumerate(results, 1):
+        click.echo(f"  {idx}. session={row['session_id'][:16]} agent={row['entity_type']} score={score:.4f}")
+        click.echo(f"      {truncate(row['content_text'], 140)}")
+
+
+@cli.command("summarize")
+@click.argument("session_id")
+def summarize(session_id):
+    """Show session summary, topic tags, and recommendations."""
+    try:
+        embed = import_embed_module()
+    except RuntimeError as exc:
+        click.echo(red(str(exc)))
+        return
+    conn = db()
+    summary = embed.get_session_summary(conn, session_id)
+    alerts = embed.get_session_alerts(conn, session_id)
+    recs = embed.get_session_recommendations(conn, session_id)
+    conn.close()
+    if not summary:
+        click.echo(red("  No summary available. Run cda embed build first."))
+        return
+    click.echo(bold("  Summary:"))
+    click.echo(f"    {summary['summary_text']}")
+    click.echo(bold("  Topics:"))
+    click.echo(f"    {summary['topic_tags'] or dim('none')}")
+    if alerts:
+        click.echo(bold("  Alerts:"))
+        for a in alerts:
+            click.echo(f"    [{a['severity']}] {a['message']}")
+    if recs:
+        click.echo(bold("  Recommendations:"))
+        for r in recs:
+            click.echo(f"    - {r['recommendation_text']}")
+
+
+@cli.command("topics")
+@click.option("--limit", default=20, show_default=True, help="Maximum topic tags to show")
+def topics(limit):
+    """Show semantic topic tags."""
+    try:
+        embed = import_embed_module()
+    except RuntimeError as exc:
+        click.echo(red(str(exc)))
+        return
+    conn = db()
+    topics = embed.get_topic_counts(conn, limit)
+    conn.close()
+    if not topics:
+        click.echo(dim("  No topic tags available. Run cda embed build first."))
+        return
+    click.echo(bold("  Topic tags:"))
+    for tag, count in topics:
+        click.echo(f"    {tag:<18} {count}")
+
+
+@cli.command("alerts")
+@click.argument("session_id")
+def alerts(session_id):
+    """Show semantic anomaly alerts for a session."""
+    try:
+        embed = import_embed_module()
+    except RuntimeError as exc:
+        click.echo(red(str(exc)))
+        return
+    conn = db()
+    alerts = embed.get_session_alerts(conn, session_id)
+    conn.close()
+    if not alerts:
+        click.echo(dim("  No alerts found."))
+        return
+    click.echo(bold("  Alerts:"))
+    for a in alerts:
+        click.echo(f"    [{a['severity']}] {a['message']}")
+
+
+@cli.command("recommend")
+@click.argument("session_id")
+def recommend(session_id):
+    """Show session recommendations."""
+    try:
+        embed = import_embed_module()
+    except RuntimeError as exc:
+        click.echo(red(str(exc)))
+        return
+    conn = db()
+    recs = embed.get_session_recommendations(conn, session_id)
+    conn.close()
+    if not recs:
+        click.echo(dim("  No recommendations found."))
+        return
+    click.echo(bold("  Recommendations:"))
+    for r in recs:
+        click.echo(f"    - {r['recommendation_text']}")
+
+
 # ─────────────────────────────────────────────
 # WATCH
 # ─────────────────────────────────────────────
@@ -302,12 +485,16 @@ def watch_start():
         except (ProcessLookupError, ValueError):
             PID_FILE.unlink(missing_ok=True)
 
-    proc = subprocess.Popen(
-        [sys.executable, str(WATCHER)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    log_file = ARK_DIR / "watcher.log"
+    with open(log_file, 'a') as f:
+        proc = subprocess.Popen(
+            [sys.executable, str(WATCHER)],
+            stdout=f,
+            stderr=f,
+            preexec_fn=os.setsid,
+            cwd=ARK_DIR,
+            env={**os.environ, 'PYTHONPATH': str(ARK_DIR)},
+        )
     time.sleep(1.5)
     if PID_FILE.exists():
         pid = PID_FILE.read_text().strip()
@@ -353,6 +540,10 @@ def sync():
         click.echo(green("  Ingest complete"))
         click.echo(yellow("  Running reconstruction..."))
         subprocess.run([sys.executable, str(RECON)], capture_output=False)
+        click.echo(green("  Running analysis..."))
+        subprocess.run([sys.executable, str(EXTRACT)], capture_output=False)
+        click.echo(green("  Running semantic intelligence..."))
+        subprocess.run([sys.executable, str(EMBED)], capture_output=False)
         click.echo(green("  Done"))
     else:
         click.echo(red("  Ingest failed"))

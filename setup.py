@@ -34,6 +34,8 @@ setup(
     install_requires=[
         "watchfiles>=0.20",
         "click>=8.0",
+        "sentence-transformers>=2.2.2",
+        "numpy>=1.26",
     ],
     extras_require={
         "dev": [

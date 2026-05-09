@@ -30,9 +30,10 @@ except ImportError:
     print("ERROR: watchfiles not installed. Run: pip install watchfiles")
     sys.exit(1)
 
-DB_PATH   = Path(__file__).parent / "vscode-ark.db"
-PID_FILE  = Path(__file__).parent / "watcher.pid"
-QUEUE_DIR = Path(__file__).parent / "watcher-queue"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DB_PATH   = ROOT_DIR / "vscode-ark.db"
+PID_FILE  = ROOT_DIR / "watcher.pid"
+QUEUE_DIR = ROOT_DIR / "watcher-queue"
 VS_ROOT   = Path.home() / "Library/Application Support/Code/User/workspaceStorage"
 GLOBAL_MEM = Path.home() / "Library/Application Support/Code/User/globalStorage/github.copilot-chat/memory-tool/memories"
 
@@ -52,6 +53,9 @@ def get_conn():
     conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-2000")
+    conn.execute("PRAGMA mmap_size=268435456")
+    conn.execute("PRAGMA temp_store=MEMORY")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -458,9 +462,7 @@ def handle_state_vscdb(conn, ws_id, path: Path):
 # Exchange reconstruction (incremental)
 # ─────────────────────────────────────────────
 
-# Import from reconstruct module
-sys.path.insert(0, str(Path(__file__).parent))
-from reconstruct import reconstruct_session as _reconstruct_session
+from vscode_ark.reconstruct import reconstruct_session as _reconstruct_session
 
 def rebuild_exchanges(conn, session_id: str, ws_id: str):
     """Delete and rebuild exchanges + FTS for one session."""
@@ -526,6 +528,7 @@ class Debouncer:
 # ─────────────────────────────────────────────
 
 def main():
+    print("STARTING WATCHER", os.environ.get('PYTHONPATH'), file=sys.stderr)
     # Initialize persistent queue
     init_queue()
     cleanup_old_queue_files()
@@ -583,9 +586,8 @@ def main():
             c.close()
         # Incremental extraction: run behavioral signals + session analysis
         try:
-            sys.path.insert(0, str(Path(__file__).parent))
             import importlib
-            extract = importlib.import_module('extract') if 'extract' not in sys.modules else sys.modules['extract']
+            extract = importlib.import_module('vscode_ark.extract')
             importlib.reload(extract)
             c2 = get_conn()
             try:
@@ -600,6 +602,13 @@ def main():
                     extract.process_session(c2, session_id, blob_row[0])
                     extract.build_session_analysis(c2, session_id)
                     c2.commit()
+                    try:
+                        embed = importlib.import_module('vscode_ark.embed')
+                        importlib.reload(embed)
+                        embed.build_session_intelligence(c2, session_id)
+                        c2.commit()
+                    except Exception as ex2:
+                        log.warning(f"embed pass failed for {session_id[:8]}: {ex2}")
             finally:
                 c2.close()
         except Exception as ex:

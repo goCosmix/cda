@@ -107,6 +107,7 @@ dmypy.json
 
 # Project specific
 *.db
+*.db*
 *.db-*
 pmf_runtime.json
 pmf_logs/

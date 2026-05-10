@@ -24,11 +24,6 @@ Commands:
   cda pmf stop <service>     Stop a service
   cda pmf restart <service>  Restart a service
   cda pmf logs <service>     Tail service logs
-  cda pypi setup             Configure PyPI token (interactive)
-  cda pypi check             Check PyPI token configuration
-  cda pypi version           Show current package version
-  cda pypi publish           Publish to PyPI
-  cda pypi build-publish     Build and publish to PyPI
   cda serve                  Start the local web UI on port 10001
   cda sync                   Full re-ingest from disk (rebuilds entire DB)
   cda reconstruct            Re-run reconstruction and FTS rebuild only
@@ -720,87 +715,6 @@ def watch_restart():
         click.echo(green(f"  Watcher restarted pid={result['pid']}"))
     except PMFKernelError as exc:
         click.echo(red(f"  Failed to restart watcher: {exc}"))
-
-
-# ─────────────────────────────────────────────
-# PYPI
-# ─────────────────────────────────────────────
-
-@cli.group()
-def pypi():
-    """Manage PyPI publishing and releases."""
-    pass
-
-
-@pypi.command("setup")
-def pypi_setup():
-    """Configure PyPI token (interactive)."""
-    from vscode_ark.pypi import setup_pypi_token
-    setup_pypi_token()
-
-
-@pypi.command("check")
-def pypi_check():
-    """Check PyPI token configuration status."""
-    from vscode_ark.pypi import PyPIManager
-    manager = PyPIManager()
-    if manager.is_configured():
-        click.echo(green("  ✓ PyPI token configured"))
-        click.echo(f"  Version: {manager.get_current_version()}")
-    else:
-        click.echo(yellow("  ⚠ PyPI token not configured"))
-        click.echo("  Run: cda pypi setup")
-
-
-@pypi.command("version")
-def pypi_version():
-    """Show current package version."""
-    from vscode_ark.pypi import PyPIManager
-    manager = PyPIManager()
-    version = manager.get_current_version()
-    click.echo(f"  Current version: {bold(version)}")
-
-
-@pypi.command("publish")
-@click.option("--dist", default="dist", show_default=True, help="Distribution directory")
-def pypi_publish(dist):
-    """Publish current version to PyPI."""
-    from vscode_ark.pypi import PyPIManager
-    manager = PyPIManager()
-    
-    if not manager.is_configured():
-        click.echo(red("  ✗ PyPI token not configured"))
-        click.echo("  Run: cda pypi setup")
-        return
-    
-    try:
-        version = manager.get_current_version()
-        click.echo(yellow(f"  Publishing version {version}..."))
-        manager.publish(dist)
-        click.echo(green(f"  ✓ Published {version} to PyPI"))
-    except Exception as exc:
-        click.echo(red(f"  ✗ Publish failed: {exc}"))
-
-
-@pypi.command("build-publish")
-@click.option("--dist", default="dist", show_default=True, help="Distribution directory")
-def pypi_build_publish(dist):
-    """Build distributions and publish to PyPI."""
-    from vscode_ark.pypi import PyPIManager
-    manager = PyPIManager()
-    
-    if not manager.is_configured():
-        click.echo(red("  ✗ PyPI token not configured"))
-        click.echo("  Run: cda pypi setup")
-        return
-    
-    try:
-        version = manager.get_current_version()
-        click.echo(yellow(f"  Building version {version}..."))
-        manager.build_and_publish()
-        click.echo(green(f"  ✓ Built and published {version} to PyPI"))
-    except Exception as exc:
-        click.echo(red(f"  ✗ Build/publish failed: {exc}"))
 
 
 # ─────────────────────────────────────────────

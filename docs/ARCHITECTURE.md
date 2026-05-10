@@ -99,7 +99,30 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
         │ - Policy filtering       │
         │ - Rich output formatting │
         └──────────────────────────┘
+                   │
+                   ▼
+        ┌──────────────────────────┐
+        │   LOCAL RUNTIME          │
+        │   (PMF Lite)             │
+        │                          │
+        │ - Service lifecycle      │
+        │ - Local status + logs    │
+        │ - UI monitoring bridge   │
+        └──────────────────────────┘
 ```
+
+## PMF Ebbed Kernel — Embedded Runtime Management
+
+The PMF Ebbed Kernel is Ark's local embedded runtime layer. It is not the full federation control plane; instead, it is a package-embedded process management framework that supervises Ark services such as the watcher daemon, web UI, ingest pipeline, reconstruction, and semantic embedding tasks.
+
+Key PMF Lite responsibilities:
+- Manage service lifecycle with PID files, background subprocesses, and log files.
+- Expose local service state for CLI and UI control.
+- Persist runtime metadata and health status for robustness.
+- Provide a lightweight event/bus surface for runtime actions and alerts.
+- Keep the package self-contained while enabling a UI-driven monitoring experience.
+
+This design keeps Ark as a "mini OS" for its own services rather than a federation master. It can later evolve to interoperate with a full PMF control plane by mapping local services to federated node concepts, but the initial implementation remains focused on local embedded control.
 
 ## Data Flow Details
 
@@ -338,6 +361,27 @@ cda
 │   │   └── list
 │   └── exchange       # View exchange detail
 ```
+
+## UI and Web Service
+
+### Local Web UI
+
+- The local dashboard is implemented in `vscode_ark/web.py`.
+- `cda serve` runs the web server in the foreground on port `10001` by default.
+- `cda ui start` launches the same service as a background daemon using a PID file and log file.
+- `cda ui stop` and `cda ui status` manage the lifecycle of the background UI.
+
+### Background UI Lifecycle
+
+- `ui start` checks for a running PID, starts the server with `subprocess.Popen`, and records the process state.
+- `ui stop` reads the PID file and terminates the server process cleanly.
+- `ui status` reports whether the background UI is active and which port is being served.
+
+### Web Service Architecture
+
+- The UI is a lightweight local web service built for rapid inspection and debugging of session analytics.
+- It exposes session drilldown, signal summaries, search, and tool-call detail in a browser-based dashboard.
+- The service is intended for local use only and does not depend on external servers.
 
 ## Performance Characteristics
 

@@ -56,6 +56,8 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 ARK_DIR = PACKAGE_DIR.parent
 DB_PATH = ARK_DIR / "vscode-ark.db"
 PID_FILE = ARK_DIR / "watcher.pid"
+UI_PID_FILE = ARK_DIR / "ui.pid"
+UI_LOG_FILE = ARK_DIR / "ui.log"
 WATCHER = PACKAGE_DIR / "watcher.py"
 INGEST = PACKAGE_DIR / "ingest.py"
 RECON = PACKAGE_DIR / "reconstruct.py"
@@ -342,8 +344,9 @@ def status():
 @click.option("--host", default="127.0.0.1", show_default=True, help="Local host to bind the web UI")
 @click.option("--port", default=10001, show_default=True, help="Local port for the web UI")
 def serve(host, port):
-    """Start the local web UI for vscode-ark."""
+    """Start the local web UI for vscode-ark in the foreground."""
     click.echo(yellow(f"  Starting local web UI at http://{host}:{port}"))
+    click.echo(yellow("  Use `cda ui start` to launch it as a background service."))
     try:
         import importlib
         import vscode_ark.web as web
@@ -353,6 +356,159 @@ def serve(host, port):
         click.echo(red(f"  Details: {exc}"))
         return
     web.start_server(host=host, port=port)
+
+
+@cli.group()
+def ui():
+    """Manage the vscode-ark web UI as a background service."""
+    pass
+
+
+def _ui_is_running():
+    if not UI_PID_FILE.exists():
+        return False, None
+    pid = UI_PID_FILE.read_text().strip()
+    try:
+        os.kill(int(pid), 0)
+        return True, int(pid)
+    except (ProcessLookupError, ValueError):
+        return False, None
+
+
+@ui.command("start")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Local host to bind the web UI")
+@click.option("--port", default=10001, show_default=True, help="Local port for the web UI")
+def ui_start(host, port):
+    """Start the web UI as a background service."""
+    try:
+        result = kernel.start_service("ui", options={"host": host, "port": port})
+        click.echo(green(f"  Web UI started in background at http://{host}:{port} pid={result['pid']}"))
+        click.echo(yellow(f"  Logs: {ARK_DIR / 'ui.log'}"))
+    except PMFKernelError as exc:
+        click.echo(red(f"  Failed to start UI: {exc}"))
+
+
+@ui.command("stop")
+def ui_stop():
+    """Stop the background web UI service."""
+    try:
+        result = kernel.stop_service("ui")
+        click.echo(green(f"  Stopped web UI pid={result['pid'] or 'unknown'}"))
+    except PMFKernelError as exc:
+        click.echo(yellow(f"  {exc}"))
+
+
+@ui.command("status")
+def ui_status():
+    """Show whether the background web UI is running."""
+    try:
+        result = kernel.service_status("ui")
+        if result["status"] == "running":
+            click.echo(green(f"  Web UI is running pid={result['pid']}"))
+            click.echo(f"  Log: {result['log_file']}")
+        else:
+            click.echo(yellow("  Web UI is not running."))
+            click.echo("  Start it with: cda ui start")
+    except PMFKernelError as exc:
+        click.echo(red(f"  {exc}"))
+
+
+@ui.command("restart")
+def ui_restart():
+    """Restart the background web UI service."""
+    try:
+        kernel.restart_service("ui")
+        click.echo(green("  Web UI restarted."))
+    except PMFKernelError as exc:
+        click.echo(red(f"  Failed to restart UI: {exc}"))
+
+
+@cli.group()
+def pmf():
+    """Manage the embedded PMF kernel and Ark runtime services."""
+    pass
+
+
+@pmf.command("services")
+def pmf_services():
+    """List embedded PMF services and runtime status."""
+    rows = kernel.services()
+    click.echo()
+    click.echo(bold("  PMF Runtime Services"))
+    click.echo(hr())
+    for service in rows:
+        status = green(service["status"]) if service["status"] == "running" else yellow(service["status"])
+        click.echo(f"  {bold(service['label']):<20} {status:<10} pid={service['pid'] or '—'}")
+        click.echo(f"      {service['description']}")
+    click.echo()
+
+
+@pmf.command("status")
+@click.argument("service_id", required=False)
+def pmf_status(service_id):
+    """Show PMF runtime status for one or all services."""
+    if service_id:
+        try:
+            service = kernel.service_status(service_id)
+            click.echo()
+            click.echo(bold(f"  {service['label']}"))
+            click.echo(f"  Status: {service['status']}")
+            click.echo(f"  PID: {service['pid'] or '—'}")
+            click.echo(f"  Started: {service['started_at'] or '—'}")
+            click.echo(f"  Log: {service['log_file'] or '—'}")
+            click.echo()
+        except PMFKernelError as exc:
+            click.echo(red(f"  {exc}"))
+    else:
+        pmf_services()
+
+
+@pmf.command("start")
+@click.argument("service_id")
+@click.option("--host", default="127.0.0.1", help="Host override for UI service")
+@click.option("--port", default=10001, help="Port override for UI service")
+def pmf_start(service_id, host, port):
+    """Start a PMF-managed Ark service."""
+    options = {"host": host, "port": port} if service_id == "ui" else None
+    try:
+        result = kernel.start_service(service_id, options=options)
+        click.echo(green(f"  Started {result['label']} pid={result['pid']}"))
+    except PMFKernelError as exc:
+        click.echo(red(f"  {exc}"))
+
+
+@pmf.command("stop")
+@click.argument("service_id")
+def pmf_stop(service_id):
+    """Stop a PMF-managed Ark service."""
+    try:
+        result = kernel.stop_service(service_id)
+        click.echo(green(f"  Stopped {result['label']}"))
+    except PMFKernelError as exc:
+        click.echo(red(f"  {exc}"))
+
+
+@pmf.command("restart")
+@click.argument("service_id")
+def pmf_restart(service_id):
+    """Restart a PMF-managed Ark service."""
+    try:
+        result = kernel.restart_service(service_id)
+        click.echo(green(f"  Restarted {result['label']} pid={result['pid']}"))
+    except PMFKernelError as exc:
+        click.echo(red(f"  {exc}"))
+
+
+@pmf.command("logs")
+@click.argument("service_id")
+@click.option("--tail", default=50, show_default=True, help="Lines to tail from the log file")
+def pmf_logs(service_id, tail):
+    """Display the last lines from a PMF service log."""
+    try:
+        output = kernel.tail_log(service_id, lines=tail)
+        click.echo(output)
+    except PMFKernelError as exc:
+        click.echo(red(f"  {exc}"))
 
 
 @cli.group()
@@ -531,55 +687,29 @@ def watch():
 @watch.command("start")
 def watch_start():
     """Start the live sync watcher daemon."""
-    if PID_FILE.exists():
-        pid = PID_FILE.read_text().strip()
-        try:
-            os.kill(int(pid), 0)
-            click.echo(yellow(f"  Watcher already running (pid={pid})"))
-            return
-        except (ProcessLookupError, ValueError):
-            PID_FILE.unlink(missing_ok=True)
-
-    log_file = ARK_DIR / "watcher.log"
-    with open(log_file, 'a') as f:
-        proc = subprocess.Popen(
-            [sys.executable, str(WATCHER)],
-            stdout=f,
-            stderr=f,
-            preexec_fn=os.setsid,
-            cwd=ARK_DIR,
-            env={**os.environ, 'PYTHONPATH': str(ARK_DIR)},
-        )
-    time.sleep(1.5)
-    if PID_FILE.exists():
-        pid = PID_FILE.read_text().strip()
-        click.echo(green(f"  Watcher started  pid={pid}"))
-    else:
-        click.echo(red("  Watcher may have failed to start — check watcher.log"))
+    try:
+        result = kernel.start_service("watcher")
+        click.echo(green(f"  Watcher started pid={result['pid']}"))
+    except PMFKernelError as exc:
+        click.echo(red(f"  {exc}"))
 
 @watch.command("stop")
 def watch_stop():
     """Stop the live sync watcher daemon."""
-    if not PID_FILE.exists():
-        click.echo(yellow("  Watcher not running"))
-        return
-    pid = PID_FILE.read_text().strip()
     try:
-        os.kill(int(pid), signal.SIGTERM)
-        time.sleep(0.5)
-        click.echo(green(f"  Watcher stopped (pid={pid})"))
-        PID_FILE.unlink(missing_ok=True)
-    except (ProcessLookupError, ValueError):
-        click.echo(yellow(f"  Process {pid} not found — cleaning up pid file"))
-        PID_FILE.unlink(missing_ok=True)
+        result = kernel.stop_service("watcher")
+        click.echo(green(f"  Watcher stopped"))
+    except PMFKernelError as exc:
+        click.echo(yellow(f"  {exc}"))
 
 @watch.command("restart")
 def watch_restart():
     """Restart the watcher daemon."""
-    ctx = click.get_current_context()
-    ctx.invoke(watch_stop)
-    time.sleep(0.5)
-    ctx.invoke(watch_start)
+    try:
+        result = kernel.restart_service("watcher")
+        click.echo(green(f"  Watcher restarted pid={result['pid']}"))
+    except PMFKernelError as exc:
+        click.echo(red(f"  Failed to restart watcher: {exc}"))
 
 
 # ─────────────────────────────────────────────

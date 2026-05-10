@@ -10,7 +10,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="vscode-ark",
-    version="0.1.2",
+    version="2.0.0",
     author="Ernie Butcher",
     author_email="ernie@fiosii.com",
     description="VS Code/Copilot Chat session intelligence analysis system",

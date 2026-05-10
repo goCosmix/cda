@@ -10,11 +10,13 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from wsgiref.simple_server import make_server, WSGIServer
 from urllib.parse import parse_qs, urlparse, urlencode, quote, unquote
+from vscode_ark.pmf_kernel import PMFKernel, PMFKernelError
 
 # Get DB path relative to this file
 PACKAGE_DIR = Path(__file__).resolve().parent
 ARK_DIR = PACKAGE_DIR.parent
 DB_PATH = ARK_DIR / "vscode-ark.db"
+kernel = PMFKernel()
 
 # ─────────────────────────────────────────────
 # Light Theme CSS with all components
@@ -1754,6 +1756,13 @@ def render_pipeline():
             <strong>Status:</strong> <span id="status-text">Running...</span>
         </div>
     </div>
+    <div class="card mb-20">
+        <div class="card-header">Runtime Services</div>
+        <div id="pmf-services" class="loading">
+            <div class="spinner"></div>
+            Loading runtime services...
+        </div>
+    </div>
     """
 
 def render_query():
@@ -2422,6 +2431,67 @@ function initPipeline() {
     if (status) {
         status.classList.add('hidden');
     }
+
+    const container = document.getElementById('pmf-services');
+    if (!container) return;
+    container.innerHTML = '<div class="spinner"></div> Loading runtime services...';
+    fetch('/api/pmf/services').then(r => r.json()).then(data => {
+        if (data.error) {
+            container.innerHTML = '<div class="alert alert-danger">Error: ' + data.error + '</div>';
+            return;
+        }
+        const html = `
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Status</th>
+                        <th>PID</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.services.map(s => `
+                        <tr>
+                            <td><strong>${s.label}</strong><div class="truncate" style="font-size:12px;color:var(--text-tertiary);">${s.description}</div></td>
+                            <td>${s.status}</td>
+                            <td>${s.pid || '—'}</td>
+                            <td>${s.updated_at || '—'}</td>
+                            <td>
+                                ${s.allowed_actions.includes('start') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','start')">Start</button>` : ''}
+                                ${s.allowed_actions.includes('stop') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','stop')">Stop</button>` : ''}
+                                ${s.allowed_actions.includes('restart') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','restart')">Restart</button>` : ''}
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        container.innerHTML = html;
+    });
+}
+
+function runPmfServiceAction(service, action) {
+    const status = document.getElementById('action-status');
+    if (status) {
+        status.classList.remove('hidden');
+        document.getElementById('status-text').innerHTML = action + ' ' + service + '...';
+    }
+    fetch('/api/pmf/service', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({service: service, action: action})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            if (status) document.getElementById('status-text').innerHTML = 'Error: ' + data.error;
+            return;
+        }
+        if (status) document.getElementById('status-text').innerHTML = data.message || 'Command executed';
+        setTimeout(initPipeline, 1000);
+    });
 }
 
 function initQuery() {
@@ -2656,6 +2726,47 @@ def application(environ, start_response):
             response = json.dumps({"rows": rows}).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
+        
+        elif path == '/api/pmf/services' and method == 'GET':
+            try:
+                services = kernel.services()
+                response = json.dumps({"services": services}).encode('utf-8')
+                start_response('200 OK', [('Content-Type', 'application/json')])
+                return [response]
+            except Exception as e:
+                response = json.dumps({"error": str(e)}).encode('utf-8')
+                start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                return [response]
+        
+        elif path == '/api/pmf/service' and method == 'POST':
+            body = environ['wsgi.input'].read()
+            payload = json.loads(body.decode('utf-8'))
+            service_id = payload.get('service')
+            action = payload.get('action')
+            if not service_id or not action:
+                raise ValueError('service and action are required')
+            try:
+                if action == 'start':
+                    result = kernel.start_service(service_id, options=payload.get('options', {}))
+                elif action == 'stop':
+                    result = kernel.stop_service(service_id)
+                elif action == 'restart':
+                    result = kernel.restart_service(service_id, options=payload.get('options', {}))
+                else:
+                    raise ValueError('unsupported action: ' + action)
+                response = json.dumps({
+                    "ok": True,
+                    "service": service_id,
+                    "action": action,
+                    "message": f"{action} requested for {service_id}",
+                    "result": result,
+                }).encode('utf-8')
+                start_response('200 OK', [('Content-Type', 'application/json')])
+                return [response]
+            except Exception as e:
+                response = json.dumps({"error": str(e)}).encode('utf-8')
+                start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
+                return [response]
         
         else:
             response = b'Not Found'

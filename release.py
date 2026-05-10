@@ -24,18 +24,19 @@ def write_version(version: str):
     VERSION_FILE.write_text(f"{version}\n")
 
 
-def replace_in_file(path: Path, pattern: str, replacement: str):
+def replace_in_file(path: Path, pattern: str, replacement: str, multiline: bool = False):
     text = path.read_text()
-    new_text, count = re.subn(pattern, replacement, text)
+    flags = re.MULTILINE if multiline else 0
+    new_text, count = re.subn(pattern, replacement, text, flags=flags)
     if count == 0:
         raise SystemExit(f"Pattern not found in {path}: {pattern}")
     path.write_text(new_text)
 
 
 def sync_version(version: str):
-    replace_in_file(PYPROJECT_FILE, r'^(version\s*=\s*")' + VERSION_PATTERN + r'("$)', rf'\1{version}\2')
-    replace_in_file(SETUP_FILE, r'^(\s*version\s*=\s*")' + VERSION_PATTERN + r'(",)$', rf'\1{version}\2')
-    replace_in_file(INIT_FILE, r'^(\s*__version__\s*=\s*")' + VERSION_PATTERN + r'(")$', rf'\1{version}\2')
+    replace_in_file(PYPROJECT_FILE, r'^(version\s*=\s*")' + VERSION_PATTERN + r'(")', rf'\g<1>{version}\g<2>', multiline=True)
+    replace_in_file(SETUP_FILE, r'^(\s*version\s*=\s*")' + VERSION_PATTERN + r'(",)', rf'\g<1>{version}\g<2>', multiline=True)
+    replace_in_file(INIT_FILE, r'^(\s*__version__\s*=\s*")' + VERSION_PATTERN + r'(")', rf'\g<1>{version}\g<2>', multiline=True)
 
 
 def git_command(args, check=True):

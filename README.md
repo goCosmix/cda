@@ -1,33 +1,28 @@
 # VS Code Ark
 
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/vscode-ark.svg)](https://pypi.org/project/vscode-ark)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/yourusername/vscode-ark/workflows/CI/badge.svg)](https://github.com/yourusername/vscode-ark/actions)
 
-A comprehensive data pipeline and analysis system for VS Code/Copilot Chat sessions. Extract behavioral signals, compute heat scores, and gain deep insights into human-AI interaction patterns.
+A complete analysis system for VS Code + Copilot Chat sessions that turns raw editor activity into behavioral signals, semantic intelligence, and a local web dashboard.
 
-## ✨ Features
+## ✨ Key Benefits
 
-- **Behavioral Signal Analysis** - Extract 200+ keywords across 6 signal types (corrections, frustrations, affirmations, etc.)
-- **Heat Score Computation** - Quantify user frustration and agent performance (0-100 scale)
-- **Real-time Monitoring** - Live sync daemon with crash-resistant queue system
-- **Full-text Search** - FTS5-powered search across all conversations
-- **Semantic Intelligence** - miniLM embeddings, session summaries, related sessions, anomaly alerts, and recommendations
-- **Code Symbol Indexing** - AST-backed symbol extraction for Python/JS/TS and content search across VFS blobs
-- **Incremental Sync** - Watcher-driven session refreshes keep embeddings and session insight current as chat and tool outputs change
-- **Package-centric Layout** - All runtime code lives under `vscode_ark/` for a clean root.
-- **Policy-based Access Control** - Allow/deny patterns for data filtering
-- **Rich Analytics** - Token usage, context compaction, session recovery analysis
-- **Export Capabilities** - JSON, JSONL, and text export formats
-- **Professional CLI** - Comprehensive command-line interface with 25+ commands
+- **Behavioral signal intelligence** for Copilot Chat sessions.
+- **Heat scoring** to surface friction, recovery points, and session quality.
+- **Semantic search** across session transcripts, code symbols, and tool calls.
+- **Background web UI** with structured panels, alerts, and session drilldown.
+- **Live watcher daemon** to keep session analytics current.
+- **Exportable data** for JSON, JSONL, and text workflows.
 
 ## 📋 Table of Contents
 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Architecture](#architecture)
+- [Web UI](#web-ui)
 - [CLI Reference](#cli-reference)
-- [Data Analysis](#data-analysis)
+- [Architecture](#architecture)
+- [Roadmap](#roadmap)
 - [Configuration](#configuration)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -38,59 +33,116 @@ A comprehensive data pipeline and analysis system for VS Code/Copilot Chat sessi
 ### Prerequisites
 
 - Python 3.8+
-- VS Code with Copilot Chat extension
+- VS Code with the Copilot Chat extension installed
 
-### From Source
-
-```bash
-git clone https://github.com/yourusername/vscode-ark.git
-cd vscode-ark
-pip install -e .
-```
-
-### With Development Dependencies
-
-```bash
-pip install -e ".[dev]"
-```
-
-### From PyPI (Future)
+### Install from PyPI
 
 ```bash
 pip install vscode-ark
 ```
 
+### Install with pipx
+
+```bash
+pipx install vscode-ark
+```
+
+### Install from source
+
+```bash
+git clone https://github.com/goCosmix/vscode-ark.git
+cd vscode-ark
+pip install -e .
+```
+
+### Install development dependencies
+
+```bash
+pip install -e ".[dev]"
+# or
+make install-dev
+```
+
+> The `cda` console command is installed into your active Python environment's `bin` directory. Activate your virtual environment before running `cda`.
+
 ## ⚡ Quick Start
 
-1. **Initialize the database:**
-   ```bash
-   cda sync
-   ```
+1. **Initialize the database**
 
-2. **Start live monitoring:**
-   ```bash
-   cda watch start
-   ```
-   The watcher keeps VS Code updates, code symbols, and embeddings in sync.
+```bash
+cda sync
+```
 
-3. **Build semantic intelligence:**
-   ```bash
-   cda embed build
-   ```
+2. **Start the watcher daemon**
 
-4. **Explore your data:**
-   ```bash
-   cda stats                    # System overview
-   cda sessions                 # Recent sessions
-   cda serve                    # Start the local web UI on port 10001 (dashboard, heat analytics, keywords, alerts, and session drilldown)
-   cda search "error"          # Search conversations
-   cda code-search "todo" --regex  # Search code content
-   cda code-search "def process" --symbol  # Search code symbols
-   cda semantic-search "confused" # Semantic search
-   cda related <session>        # Find related sessions
-   cda summarize <session>      # Session summary and recommendations
-   cda heat                     # Frustration analysis
-   ```
+```bash
+cda watch start
+```
+
+3. **Inspect the PMF runtime services**
+
+```bash
+cda pmf services
+```
+
+4. **Build semantic intelligence**
+
+```bash
+cda embed build
+```
+
+4. **Start the web UI**
+
+```bash
+cda ui start
+```
+
+5. **Open your browser**
+
+Visit `http://127.0.0.1:10001`
+
+## 🌐 Web UI
+
+- **Background service**: `cda ui start`
+- **Stop service**: `cda ui stop`
+- **Service status**: `cda ui status`
+- **Foreground mode**: `cda serve`
+
+The web UI includes:
+
+- Session drilldown panels and charts
+- Behavioral signal summaries
+- Alert and recommendation views
+- Searchable transcript and tool-call detail
+- File/VFS browsing and raw session inspection
+
+## 🧠 Core Features
+
+- Behavioral signals with 200+ keyword patterns across six categories
+- Frustration heat scoring and recovery analytics
+- Full-text search and semantic search with embeddings
+- Code symbol indexing for Python/JS/TS
+- Incremental ingestion with crash-resilient queue replay
+- Export workflows for JSON, JSONL, and text
+
+## 📦 Package and Release
+
+- Published on PyPI as `vscode-ark`
+- Current release version: `0.1.2`
+- CLI entry point: `cda`
+- License: MIT
+
+## 🛣 Roadmap
+
+See `docs/ROADMAP.md` for product direction, milestone planning, and release priorities.
+
+## 🤝 Contributing
+
+See `CONTRIBUTING.md` for development setup, test guidance, and PR workflow.
+
+## 📜 License
+
+This project is licensed under the MIT License.
 
 ## 🧠 SQLite limits and mitigation
 
@@ -152,6 +204,12 @@ cda status              # Show daemon status and queue information
 cda stats               # System-wide statistics and coverage
 cda sync                # Full data ingestion and rebuild
 cda reconstruct         # Rebuild conversations and search index
+cda pmf services        # List embedded PMF runtime services
+cda pmf status [service] # Show runtime status for PMF services
+cda pmf start <service>  # Start a PMF-managed Ark service
+cda pmf stop <service>   # Stop a PMF-managed Ark service
+cda pmf restart <service> # Restart a PMF-managed Ark service
+cda pmf logs <service>   # Tail runtime logs for a PMF service
 
 # Session Analysis
 cda sessions            # List all sessions (newest first)
@@ -197,6 +255,9 @@ cda policy list              # Show current policies
 cda watch start             # Start watcher daemon
 cda watch stop              # Stop watcher daemon
 cda watch restart           # Restart watcher daemon
+cda ui start                # Start web UI background service
+cda ui stop                 # Stop web UI background service
+cda ui status               # Show web UI background service status
 ```
 
 ### Command Examples

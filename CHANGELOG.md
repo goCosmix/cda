@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-10
+
+### Added
+- **PMF Embedded App Kernel (PMF.EAK)**: Local process management framework for VS Code services
+- Service lifecycle management (start, stop, restart) with PID and log tracking
+- Runtime service registry with status persistence in `pmf_runtime.json`
+- CLI commands for PMF service control (`cda pmf services`, `cda pmf start <service>`, etc.)
+- Web API endpoints for runtime status and service actions (`/api/pmf/services`, `/api/pmf/service/<id>`)
+- Web UI dashboard with service table, status indicators, and control buttons
+- Service log tailing support for debugging and monitoring
+- Automatic service state restoration on kernel restart
+
+### Changed
+- **Major Architecture Overhaul**: Ark runtime now uses embedded kernel instead of direct subprocess handling
+- Refactored CLI and web UI to integrate with PMF.EAK kernel
+- `cda watch` and `cda ui` commands now managed through kernel lifecycle
+- Updated all documentation to reflect embedded kernel architecture
+
+### Fixed
+- Consolidated service management into single kernel interface
+- Improved runtime reliability with persistent state tracking
+
 ## [0.1.2] - 2026-05-10
 
 ### Added

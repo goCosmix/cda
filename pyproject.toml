@@ -10,10 +10,10 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.8"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Ernie Butcher", email = "ernie@fiosii.com"},
 ]
 maintainers = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Ernie Butcher", email = "ernie@fiosii.com"},
 ]
 keywords = ["vscode", "copilot", "chat", "analysis", "behavioral", "signals", "heat-score", "ai", "conversation"]
 classifiers = [
@@ -57,11 +57,11 @@ test = [
 cda = "vscode_ark.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/vscode-ark"
-Repository = "https://github.com/yourusername/vscode-ark.git"
-Issues = "https://github.com/yourusername/vscode-ark/issues"
-Documentation = "https://github.com/yourusername/vscode-ark#readme"
-Changelog = "https://github.com/yourusername/vscode-ark/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/goCosmix/vscode-ark"
+Repository = "https://github.com/goCosmix/vscode-ark.git"
+Issues = "https://github.com/goCosmix/vscode-ark/issues"
+Documentation = "https://github.com/goCosmix/vscode-ark#readme"
+Changelog = "https://github.com/goCosmix/vscode-ark/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]

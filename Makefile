@@ -48,3 +48,11 @@ build:
 
 publish: clean build
 	twine upload dist/*
+
+release: clean
+	python release.py --sync --build
+	git add VERSION setup.py pyproject.toml vscode_ark/__init__.py CHANGELOG.md MANIFEST.in release.py
+	git commit -m "Release version $(shell cat VERSION)"
+	python release.py --tag
+	git push origin HEAD --tags
+	python release.py --publish

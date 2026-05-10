@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-05-10
+
+### Added
+- Release automation with a version sync and tagging script
+- `VERSION` tracking file as the single source of truth for package versioning
+- `Makefile` release target for consistent build/publish workflow
+- `MANIFEST.in` packaging updates to include docs and release metadata in the source distribution
+
+### Changed
+- Consolidated packaging configuration for PyPI release tracking
+- Added version tracking and sync tooling across setup.py, pyproject.toml, and package runtime version
+
+### Fixed
+- Resolved package metadata drift between Git and PyPI releases
+
+## [0.1.1] - 2026-05-10
+
+### Added
+- Professional session drawer UI with structured panels and tables
+- Session metadata panel with clean data-row layout
+- Improved session snapshot display using data panels instead of metric cards
+- Signal summary table for better signal data presentation
+- Chat message display with thread-based rendering
+- Tool calls table with inline arguments display
+- Alert and file listing tables with enhanced formatting
+- Session-block styling for summary and turning-point text
+
+### Changed
+- Replaced all metric-card grids with structured session panels for drawer tabs
+- Updated drawer tab content rendering for consistency and depth
+- Improved data presentation with table-based layouts
+
+### Fixed
+- Package distribution now includes all web UI files and documentation
+- Updated package metadata and MANIFEST.in for complete distribution
+
 ## [0.1.0] - 2026-05-09
 
 ### Added

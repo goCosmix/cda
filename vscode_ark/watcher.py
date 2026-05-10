@@ -209,7 +209,7 @@ def replay_queue(conn):
 
                 if op_type == "vfs_insert":
                     _insert_vfs(conn, op_data["path"], op_data["ws_id"], op_data["session_id"],
-                              op_data["source_type"], op_data["content"], op_data["filename"])
+                              op_data["source_type"], None, op_data["filename"])
                 elif op_type == "transcript_event":
                     _insert_transcript_events(conn, op_data["ws_id"], op_data["session_id"],
                                             op_data["events"])
@@ -239,8 +239,14 @@ def cleanup_old_queue_files():
             completed_file.unlink()  # Remove corrupted files
 
 
-def _insert_vfs(conn, path: str, ws_id: str, session_id: str, source_type: str, content: bytes, filename: str):
+def _insert_vfs(conn, path: str, ws_id: str, session_id: str, source_type: str, content: bytes | None, filename: str):
     """Insert VFS blob - used by queue replay."""
+    if content is None:
+        try:
+            content = Path(path).read_bytes()
+        except Exception as e:
+            raise RuntimeError(f"Failed to read queued VFS content from {path}: {e}") from e
+
     conn.execute(
         """INSERT INTO vfs(workspace_id, session_id, source_type, source_path, filename,
                            content_type, content, size_bytes, sha256, ingested_at)
@@ -327,13 +333,11 @@ def handle_transcript(conn, ws_id, session_id, path: Path):
     set_offset(conn, path_str, new_offset)
 
     # Queue VFS update
-    raw = path.read_bytes()
     queue_operation("vfs_insert", {
         "path": path_str,
         "ws_id": ws_id,
         "session_id": session_id,
         "source_type": "transcript",
-        "content": raw,
         "filename": path.name
     })
 
@@ -341,7 +345,7 @@ def handle_transcript(conn, ws_id, session_id, path: Path):
     conn.execute(
         "DELETE FROM vfs WHERE session_id=? AND source_type='transcript'", (session_id,)
     )
-    _insert_vfs(conn, path_str, ws_id, session_id, "transcript", raw, path.name)
+    _insert_vfs(conn, path_str, ws_id, session_id, "transcript", path.read_bytes(), path.name)
 
     log.info(f"transcript  +{count} events  {session_id[:16]}  (total offset {new_offset})")
     return count
@@ -493,10 +497,11 @@ def handle_state_vscdb(conn, ws_id, path: Path):
 # Exchange reconstruction (incremental)
 # ─────────────────────────────────────────────
 
-from vscode_ark.reconstruct import reconstruct_session as _reconstruct_session
+from vscode_ark.reconstruct import EXCHANGES_SCHEMA, reconstruct_session as _reconstruct_session
 
 def rebuild_exchanges(conn, session_id: str, ws_id: str):
     """Delete and rebuild exchanges + FTS for one session."""
+    conn.executescript(EXCHANGES_SCHEMA)
     conn.execute("DELETE FROM exchanges WHERE session_id=?", (session_id,))
     # Remove from FTS (content= tables auto-handle via triggers if configured,
     # but since we used content= without triggers, rebuild manually)
@@ -572,7 +577,17 @@ def main():
 
     conn = get_conn()
     conn.executescript(OFFSETS_SCHEMA)
+    conn.executescript(EXCHANGES_SCHEMA)
     conn.commit()
+
+    # Ensure watcher-required schema exists before replaying operations.
+    try:
+        import importlib
+        extract = importlib.import_module('vscode_ark.extract')
+        importlib.reload(extract)
+        extract.ensure_schema(conn)
+    except Exception as ex:
+        log.warning(f"Failed to ensure extract schema: {ex}")
 
     # Replay any pending operations from queue
     replay_queue(conn)

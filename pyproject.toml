@@ -4,10 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vscode-ark"
-version = "0.1.1"
+version = "0.1.2"
 description = "Comprehensive analysis system for VS Code/Copilot Chat sessions with behavioral signal extraction and heat scoring"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.8"
 authors = [
     {name = "Ernie Butcher", email = "ernie@fiosii.com"},
@@ -20,7 +21,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
@@ -68,7 +68,7 @@ where = ["."]
 include = ["vscode_ark*"]
 
 [tool.setuptools.package-data]
-vscode_ark = ["*.txt", "*.md"]
+vscode_ark = ["*.txt", "*.md", "*.py"]
 
 [tool.black]
 line-length = 100

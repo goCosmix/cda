@@ -476,6 +476,100 @@ def build_symbol_index(conn):
     conn.commit()
 
 
+def ensure_schema(conn):
+    """Ensure extract-related tables and indexes exist for watcher and analysis passes."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS exchange_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            exchange_index INTEGER,
+            request_id TEXT,
+            ts INTEGER,
+            signal_type TEXT NOT NULL,
+            signal_text TEXT,
+            matched_keyword TEXT,
+            user_message TEXT,
+            ingested_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_signals_session ON exchange_signals(session_id);
+        CREATE INDEX IF NOT EXISTS idx_signals_type ON exchange_signals(signal_type);
+
+        CREATE TABLE IF NOT EXISTS session_analysis (
+            session_id TEXT PRIMARY KEY,
+            total_corrections INTEGER DEFAULT 0,
+            total_redirects INTEGER DEFAULT 0,
+            total_affirmations INTEGER DEFAULT 0,
+            total_tool_calls INTEGER DEFAULT 0,
+            total_tokens_prompt INTEGER DEFAULT 0,
+            total_tokens_completion INTEGER DEFAULT 0,
+            total_tokens_cached INTEGER DEFAULT 0,
+            compaction_count INTEGER DEFAULT 0,
+            session_duration_min REAL,
+            first_ts INTEGER,
+            last_ts INTEGER,
+            model_ids TEXT,
+            clean_run INTEGER DEFAULT 0,
+            analyzed_at TEXT DEFAULT (datetime('now')),
+            total_frustrations INTEGER DEFAULT 0,
+            total_pre_corrections INTEGER DEFAULT 0,
+            heat_score INTEGER DEFAULT 0,
+            peak_heat INTEGER DEFAULT 0,
+            final_heat INTEGER DEFAULT 0,
+            saved_session INTEGER DEFAULT 0,
+            turning_point_ts INTEGER,
+            turning_point_text TEXT
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_exchanges USING fts5(
+            session_id      UNINDEXED,
+            workspace_id    UNINDEXED,
+            exchange_index  UNINDEXED,
+            user_ts         UNINDEXED,
+            user_message,
+            reasoning_text,
+            response_text,
+            tool_calls,
+            content=exchanges,
+            content_rowid=id
+        );
+
+        CREATE TABLE IF NOT EXISTS symbols (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id TEXT,
+            file_path TEXT,
+            symbol_name TEXT,
+            symbol_type TEXT,
+            line_number INTEGER,
+            context TEXT,
+            indexed_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_symbols_workspace ON symbols(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(symbol_type);
+        CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(symbol_name);
+
+        CREATE TABLE IF NOT EXISTS tool_calls (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id      TEXT NOT NULL,
+            exchange_index  INTEGER,
+            request_id      TEXT,
+            tool_call_id    TEXT,
+            tool_name       TEXT NOT NULL,
+            file_path       TEXT,
+            arguments_json  TEXT,
+            has_output      INTEGER DEFAULT 0,
+            ingested_at     TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_tool_calls_session  ON tool_calls(session_id);
+        CREATE INDEX IF NOT EXISTS idx_tool_calls_name     ON tool_calls(tool_name);
+        CREATE INDEX IF NOT EXISTS idx_tool_calls_file     ON tool_calls(file_path);
+    """)
+    try:
+        conn.execute("ALTER TABLE session_analysis ADD COLUMN clean_run INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    conn.commit()
+
+
 # ─────────────────────────────────────────────────────────
 # Main processing
 # ─────────────────────────────────────────────────────────
@@ -807,6 +901,7 @@ def run():
             first_ts INTEGER,
             last_ts INTEGER,
             model_ids TEXT,
+            clean_run INTEGER DEFAULT 0,
             analyzed_at TEXT DEFAULT (datetime('now')),
             total_frustrations INTEGER DEFAULT 0,
             total_pre_corrections INTEGER DEFAULT 0,
@@ -864,6 +959,10 @@ def run():
         CREATE INDEX IF NOT EXISTS idx_tool_calls_name     ON tool_calls(tool_name);
         CREATE INDEX IF NOT EXISTS idx_tool_calls_file     ON tool_calls(file_path);
     """)
+    try:
+        conn.execute("ALTER TABLE session_analysis ADD COLUMN clean_run INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
 
     # Clear existing extracted data for a clean re-run

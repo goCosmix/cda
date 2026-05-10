@@ -82,6 +82,7 @@ pip install vscode-ark
    ```bash
    cda stats                    # System overview
    cda sessions                 # Recent sessions
+   cda serve                    # Start the local web UI on port 10001 (dashboard, heat analytics, keywords, alerts, and session drilldown)
    cda search "error"          # Search conversations
    cda code-search "todo" --regex  # Search code content
    cda code-search "def process" --symbol  # Search code symbols

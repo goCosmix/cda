@@ -19,6 +19,7 @@ Commands:
   cda watch start            Start the live watcher daemon
   cda watch stop             Stop the watcher daemon
   cda watch restart          Restart the watcher daemon
+  cda serve                  Start the local web UI on port 10001
   cda sync                   Full re-ingest from disk (rebuilds entire DB)
   cda reconstruct            Re-run reconstruction and FTS rebuild only
   cda embed build            Build semantic embeddings and session intelligence
@@ -337,6 +338,23 @@ def status():
     click.echo()
 
 
+@cli.command("serve")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Local host to bind the web UI")
+@click.option("--port", default=10001, show_default=True, help="Local port for the web UI")
+def serve(host, port):
+    """Start the local web UI for vscode-ark."""
+    click.echo(yellow(f"  Starting local web UI at http://{host}:{port}"))
+    try:
+        import importlib
+        import vscode_ark.web as web
+        importlib.reload(web)
+    except Exception as exc:
+        click.echo(red("  Failed to start web UI. Ensure the package is installed and importable."))
+        click.echo(red(f"  Details: {exc}"))
+        return
+    web.start_server(host=host, port=port)
+
+
 @cli.group()
 def embed():
     """Build and inspect semantic intelligence."""
@@ -573,17 +591,32 @@ def sync():
     """Full re-ingest from disk (rebuilds entire DB)."""
     click.echo(yellow("  Running full ingest — this rewrites the DB..."))
     result = subprocess.run([sys.executable, str(INGEST)], capture_output=False)
-    if result.returncode == 0:
-        click.echo(green("  Ingest complete"))
-        click.echo(yellow("  Running reconstruction..."))
-        subprocess.run([sys.executable, str(RECON)], capture_output=False)
-        click.echo(green("  Running analysis..."))
-        subprocess.run([sys.executable, str(EXTRACT)], capture_output=False)
-        click.echo(green("  Running semantic intelligence..."))
-        subprocess.run([sys.executable, str(EMBED)], capture_output=False)
-        click.echo(green("  Done"))
-    else:
+    if result.returncode != 0:
         click.echo(red("  Ingest failed"))
+        return
+
+    click.echo(green("  Ingest complete"))
+    click.echo(yellow("  Running reconstruction..."))
+    result = subprocess.run([sys.executable, str(RECON)], capture_output=False)
+    if result.returncode != 0:
+        click.echo(red("  Reconstruction failed"))
+        return
+
+    click.echo(green("  Reconstruction complete"))
+    click.echo(yellow("  Running analysis..."))
+    result = subprocess.run([sys.executable, str(EXTRACT)], capture_output=False)
+    if result.returncode != 0:
+        click.echo(red("  Analysis failed"))
+        return
+
+    click.echo(green("  Analysis complete"))
+    click.echo(yellow("  Running semantic intelligence..."))
+    result = subprocess.run([sys.executable, str(EMBED)], capture_output=False)
+    if result.returncode != 0:
+        click.echo(red("  Semantic intelligence failed"))
+        return
+
+    click.echo(green("  Done"))
 
 @cli.command()
 def reconstruct():

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vscode-ark"
-version = "0.1.0"
+version = "0.1.1"
 description = "Comprehensive analysis system for VS Code/Copilot Chat sessions with behavioral signal extraction and heat scoring"
 readme = "README.md"
 license = {text = "MIT"}

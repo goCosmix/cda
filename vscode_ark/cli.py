@@ -46,6 +46,7 @@ Commands:
 
 import os, sys, json, gzip, sqlite3, subprocess, signal, textwrap, time, datetime
 from pathlib import Path
+from vscode_ark.reconstruct import decompress_vfs
 
 import click
 
@@ -148,6 +149,30 @@ def db():
 
 def short_id(s, n=8):
     return (s or "")[:n]
+
+
+def _decode_vfs_text(blob):
+    if not blob:
+        return ""
+    try:
+        raw = decompress_vfs(blob)
+    except Exception:
+        raw = blob
+    if isinstance(raw, str):
+        return raw
+    for encoding in ('utf-8', 'latin-1'):
+        try:
+            return raw.decode(encoding)
+        except Exception:
+            continue
+    return ""
+
+
+def _code_search_snippet(text, match, radius=80):
+    start = max(0, match.start() - radius)
+    end = min(len(text), match.end() + radius)
+    snippet = text[start:end].replace("\n", " ")
+    return snippet.strip()
 
 
 def import_embed_module():
@@ -351,11 +376,7 @@ def semantic_search(query, limit):
         click.echo(f"      {truncate(row['content_text'], 140)}")
 
 
-@cli.command("similar")
-@click.argument("session_id")
-@click.option("--limit", default=5, show_default=True, help="Maximum similar sessions")
-def similar(session_id, limit):
-    """Find sessions similar to a given session."""
+def _show_similar(session_id, limit):
     try:
         embed = import_embed_module()
     except RuntimeError as exc:
@@ -371,6 +392,22 @@ def similar(session_id, limit):
     for idx, (row, score) in enumerate(results, 1):
         click.echo(f"  {idx}. session={row['session_id'][:16]} agent={row['entity_type']} score={score:.4f}")
         click.echo(f"      {truncate(row['content_text'], 140)}")
+
+
+@cli.command("similar")
+@click.argument("session_id")
+@click.option("--limit", default=5, show_default=True, help="Maximum similar sessions")
+def similar(session_id, limit):
+    """Find sessions similar to a given session."""
+    _show_similar(session_id, limit)
+
+
+@cli.command("related")
+@click.argument("session_id")
+@click.option("--limit", default=5, show_default=True, help="Maximum related sessions")
+def related(session_id, limit):
+    """Alias for finding sessions related by semantic similarity."""
+    _show_similar(session_id, limit)
 
 
 @cli.command("summarize")
@@ -1350,11 +1387,64 @@ def code_search(pattern, symbol, path, regex, workspace, limit):
         click.echo()
 
     else:
-        # Content search - for now, search VFS text content
-        # TODO: Integrate with Nyx AST scanner for full code search
-        click.echo(yellow("  Content search not yet implemented - use --symbol for symbol search"))
-        click.echo(f"  Try: {bold('cda code-search <pattern> --symbol')}")
+        import re
+
+        query = "SELECT workspace_id, source_path, source_type, content_type, content, size_bytes FROM vfs WHERE source_type IN ('edit_content','edit_state','memory_workspace','memory_global')"
+        params = []
+        if workspace:
+            query += " AND workspace_id LIKE ?"
+            params.append(f"{workspace}%")
+        if path:
+            query += " AND source_path LIKE ?"
+            params.append(f"%{path}%")
+
+        rows = conn.execute(query, params).fetchall()
+        results = []
+        lower_pattern = pattern.lower() if not regex else None
+        compiled = None
+        if regex:
+            try:
+                compiled = re.compile(pattern, re.IGNORECASE)
+            except re.error:
+                click.echo(red("  Invalid regex pattern."))
+                conn.close()
+                return
+
+        for workspace_id, source_path, source_type, content_type, content_blob, size_bytes in rows:
+            text = _decode_vfs_text(content_blob)
+            if not text:
+                continue
+            if regex:
+                m = compiled.search(text)
+                if not m:
+                    continue
+                snippet = _code_search_snippet(text, m)
+            else:
+                if lower_pattern not in text.lower():
+                    continue
+                idx = text.lower().find(lower_pattern)
+                m = re.search(re.escape(pattern), text[idx:idx+len(pattern)+1]) if idx >= 0 else None
+                start = max(0, idx - 80)
+                end = min(len(text), idx + len(pattern) + 80)
+                snippet = text[start:end].replace("\n", " ").strip()
+
+            results.append((workspace_id, source_path, source_type, snippet))
+            if len(results) >= limit:
+                break
+
         conn.close()
+
+        if not results:
+            click.echo(dim(f"  No code content found matching '{pattern}'"))
+            return
+
+        click.echo()
+        click.echo(bold(f"  Code content results ({len(results)} results)"))
+        click.echo(hr())
+        for workspace_id, source_path, source_type, snippet in results:
+            click.echo(f"  {bold(source_path)} {dim(source_type)} {dim(short_id(workspace_id, 10))}")
+            click.echo(f"    {dim(truncate(snippet, 180))}")
+        click.echo()
 
 
 # ─────────────────────────────────────────────

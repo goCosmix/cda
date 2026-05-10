@@ -20,6 +20,7 @@ import sqlite3
 import gzip
 import json
 import re
+import ast
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -299,6 +300,180 @@ def _apply_result_patch(req, result):
                 'outcome': s.get('outcome', ''),
                 'usage': s.get('usage', {}),
             }
+
+
+def _decode_vfs_text(blob: bytes) -> str:
+    if not blob:
+        return ""
+    try:
+        raw = gzip.decompress(blob)
+    except Exception:
+        raw = blob
+    if isinstance(raw, str):
+        return raw
+    for encoding in ('utf-8', 'latin-1'):
+        try:
+            return raw.decode(encoding)
+        except Exception:
+            continue
+    return ""
+
+
+def _symbol_context(content: str, lineno: int, radius: int = 2) -> str:
+    lines = content.splitlines()
+    if lineno is None or lineno <= 0:
+        return ""
+    start = max(0, lineno - 1 - radius)
+    end = min(len(lines), lineno + radius)
+    return "\n".join(lines[start:end]).strip()
+
+
+def _extract_python_symbols(file_path: str, content: str) -> List[dict]:
+    symbols: List[dict] = []
+    if not content.strip():
+        return symbols
+
+    class SymbolVisitor(ast.NodeVisitor):
+        def __init__(self):
+            self.stack: List[str] = []
+            self.found: List[Tuple[str, str, int]] = []
+
+        def _push(self, name: str):
+            self.stack.append(name)
+
+        def _pop(self):
+            if self.stack:
+                self.stack.pop()
+
+        def _qualname(self, name: str) -> str:
+            return ".".join(self.stack + [name]) if self.stack else name
+
+        def visit_ClassDef(self, node):
+            self.found.append(('class', self._qualname(node.name), node.lineno))
+            self._push(node.name)
+            self.generic_visit(node)
+            self._pop()
+
+        def visit_FunctionDef(self, node):
+            kind = 'method' if self.stack else 'function'
+            self.found.append((kind, self._qualname(node.name), node.lineno))
+            self.generic_visit(node)
+
+        def visit_AsyncFunctionDef(self, node):
+            kind = 'method' if self.stack else 'function'
+            self.found.append((kind, self._qualname(node.name), node.lineno))
+            self.generic_visit(node)
+
+        def visit_AnnAssign(self, node):
+            target = node.target
+            if isinstance(target, ast.Name) and not target.id.startswith('_') and not self.stack:
+                self.found.append(('variable', target.id, node.lineno))
+            self.generic_visit(node)
+
+        def visit_Assign(self, node):
+            if not self.stack:
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and not target.id.startswith('_'):
+                        self.found.append(('variable', target.id, node.lineno))
+            self.generic_visit(node)
+
+    try:
+        tree = ast.parse(content, filename=file_path)
+        visitor = SymbolVisitor()
+        visitor.visit(tree)
+    except Exception:
+        return symbols
+
+    for kind, name, lineno in visitor.found:
+        symbols.append({
+            'symbol_type': kind,
+            'symbol_name': name,
+            'line_number': lineno,
+            'context': _symbol_context(content, lineno),
+        })
+    return symbols
+
+
+def _extract_generic_symbols(file_path: str, content: str) -> List[dict]:
+    symbols: List[dict] = []
+    if not content.strip():
+        return symbols
+
+    patterns = [
+        (r'^\s*(?:export\s+)?(?:default\s+)?function\s+([A-Za-z_][\w]*)\b', 'function'),
+        (r'^\s*(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_][\w]*)\b', 'class'),
+        (r'^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_][\w]*)\s*=', 'variable'),
+        (r'^\s*(?:interface|enum|struct|type)\s+([A-Za-z_][\w]*)\b', 'type'),
+        (r'^\s*def\s+([A-Za-z_][\w]*)\b', 'function'),
+        (r'^\s*func\s+([A-Za-z_][\w]*)\b', 'function'),
+    ]
+
+    for line_number, line in enumerate(content.splitlines(), start=1):
+        for pattern, kind in patterns:
+            match = re.match(pattern, line)
+            if match:
+                name = match.group(1)
+                symbols.append({
+                    'symbol_type': kind,
+                    'symbol_name': name,
+                    'line_number': line_number,
+                    'context': _symbol_context(content, line_number),
+                })
+                break
+    return symbols
+
+
+def extract_code_symbols(file_path: str, content: str) -> List[dict]:
+    ext = Path(file_path).suffix.lower()
+    if not ext:
+        return []
+    if ext in ('.py', '.pyi'):
+        return _extract_python_symbols(file_path, content)
+    if ext in ('.js', '.jsx', '.ts', '.tsx', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.cs', '.swift', '.rb'):
+        return _extract_generic_symbols(file_path, content)
+    return []
+
+
+def _is_code_file(source_path: str) -> bool:
+    if not source_path:
+        return False
+    ext = Path(source_path).suffix.lower()
+    return ext in {
+        '.py', '.pyi', '.js', '.jsx', '.ts', '.tsx', '.go', '.rs', '.java',
+        '.c', '.cpp', '.h', '.cs', '.swift', '.rb'
+    }
+
+
+def build_symbol_index(conn):
+    print("\nBuilding code symbol index...")
+    conn.execute("DELETE FROM symbols")
+    rows = conn.execute(
+        "SELECT workspace_id, source_path, content FROM vfs"
+    ).fetchall()
+    symbols = []
+    indexed_at = int(datetime.utcnow().timestamp() * 1000)
+    for workspace_id, source_path, content_blob in rows:
+        if not _is_code_file(source_path or ""):
+            continue
+        text = _decode_vfs_text(content_blob)
+        if not text:
+            continue
+        for sym in extract_code_symbols(source_path, text):
+            symbols.append((
+                workspace_id,
+                source_path,
+                sym['symbol_name'],
+                sym['symbol_type'],
+                sym['line_number'],
+                sym['context'],
+                indexed_at,
+            ))
+    if symbols:
+        conn.executemany(
+            "INSERT INTO symbols(workspace_id, file_path, symbol_name, symbol_type, line_number, context, indexed_at) VALUES (?,?,?,?,?,?,?)",
+            symbols
+        )
+    conn.commit()
 
 
 # ─────────────────────────────────────────────────────────
@@ -696,6 +871,7 @@ def run():
     conn.execute("DELETE FROM compactions")
     conn.execute("DELETE FROM exchange_signals")
     conn.execute("DELETE FROM session_analysis")
+    conn.execute("DELETE FROM symbols")
     conn.commit()
 
     # Get all sessions that have a chat_session blob
@@ -776,6 +952,7 @@ def run():
     n_tc = conn.execute("SELECT COUNT(*) FROM tool_calls").fetchone()[0]
     print(f"  tool_calls rows: {n_tc}")
 
+    build_symbol_index(conn)
     conn.close()
 
     print(f"\nDone.")

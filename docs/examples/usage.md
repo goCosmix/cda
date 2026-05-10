@@ -122,6 +122,29 @@ cda code-search "handler" --symbol --path "src/*.py"
 cda code-search "create" --symbol --workspace my-workspace --limit 20
 ```
 
+### Code Content Search
+
+```bash
+# Find code content across VFS blobs
+cda code-search "timeout" --regex
+
+# Search for a plain text snippet
+cda code-search "database error"
+```
+
+### Semantic & Related Sessions
+
+```bash
+# Search sessions by semantic meaning
+cda semantic-search "confused"
+
+# Find sessions semantically related to a session
+cda related abc123def456
+
+# Summarize a session with semantic topics and recommendations
+cda summarize abc123def456
+```
+
 ## Data Export
 
 ### Export Formats

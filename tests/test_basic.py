@@ -39,6 +39,39 @@ def test_heat_weights():
     except ImportError:
         pytest.skip("extract.py dependencies not available")
 
+
+def test_extract_code_symbols():
+    from vscode_ark.extract import extract_code_symbols
+
+    py_source = """
+class Foo:
+    def bar(self):
+        pass
+
+
+def baz(x):
+    return x
+"""
+    py_symbols = extract_code_symbols("test.py", py_source)
+    py_names = {s['symbol_name'] for s in py_symbols}
+    assert 'Foo' in py_names
+    assert 'Foo.bar' in py_names
+    assert 'baz' in py_names
+
+    js_source = """
+export function foo() {
+}
+const bar = () => {
+}
+class Baz {}
+"""
+    js_symbols = extract_code_symbols("test.js", js_source)
+    js_names = {s['symbol_name'] for s in js_symbols}
+    assert 'foo' in js_names
+    assert 'bar' in js_names
+    assert 'Baz' in js_names
+
+
 def test_basic_file_operations():
     """Test basic file reading functions"""
     from vscode_ark.ingest import read_json, read_bytes

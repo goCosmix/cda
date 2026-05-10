@@ -91,6 +91,15 @@ def ensure_tables(conn):
     CREATE INDEX IF NOT EXISTS idx_embeddings_entity ON embeddings(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_embeddings_session ON embeddings(session_id);
 
+    CREATE VIRTUAL TABLE IF NOT EXISTS fts_embeddings USING fts5(
+        entity_type UNINDEXED,
+        entity_id UNINDEXED,
+        session_id UNINDEXED,
+        exchange_index UNINDEXED,
+        content_text,
+        metadata
+    );
+
     CREATE TABLE IF NOT EXISTS session_summaries (
         session_id TEXT PRIMARY KEY,
         summary_text TEXT,
@@ -146,7 +155,7 @@ def _get_session_content(conn, session_id: str) -> str:
 
 def _get_exchange_content(row) -> str:
     text = " ".join(
-        str(row.get(field) or "") for field in (
+        str(row[field] or "") for field in (
             "user_message", "reasoning_text", "response_text", "tool_calls"
         )
     )
@@ -178,31 +187,68 @@ def upsert_embedding(
         return
     vector = _embed_texts([content_text])[0]
     blob = _serialize_embedding(vector)
+    existing = conn.execute(
+        "SELECT id FROM embeddings WHERE entity_type=? AND entity_id=?",
+        (entity_type, entity_id),
+    ).fetchone()
+    if existing:
+        rowid = existing[0]
+        conn.execute(
+            """
+            UPDATE embeddings SET
+              workspace_id=?,
+              session_id=?,
+              exchange_index=?,
+              content_type=?,
+              content_text=?,
+              metadata=?,
+              embedding=?,
+              created_at=datetime('now')
+            WHERE id=?
+            """,
+            (
+                workspace_id,
+                session_id,
+                exchange_index,
+                content_type,
+                content_text,
+                json.dumps(metadata, ensure_ascii=False),
+                blob,
+                rowid,
+            ),
+        )
+    else:
+        cur = conn.execute(
+            """
+            INSERT INTO embeddings
+            (entity_type, entity_id, workspace_id, session_id, exchange_index, content_type, content_text, metadata, embedding)
+            VALUES (?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                entity_type,
+                entity_id,
+                workspace_id,
+                session_id,
+                exchange_index,
+                content_type,
+                content_text,
+                json.dumps(metadata, ensure_ascii=False),
+                blob,
+            ),
+        )
+        rowid = cur.lastrowid
+
+    # Maintain a fast FTS index for embedding content and metadata.
     conn.execute(
-        """
-        INSERT INTO embeddings
-        (entity_type, entity_id, workspace_id, session_id, exchange_index, content_type, content_text, metadata, embedding)
-        VALUES (?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(entity_type, entity_id) DO UPDATE SET
-          workspace_id=excluded.workspace_id,
-          session_id=excluded.session_id,
-          exchange_index=excluded.exchange_index,
-          content_type=excluded.content_type,
-          content_text=excluded.content_text,
-          metadata=excluded.metadata,
-          embedding=excluded.embedding,
-          created_at=datetime('now')
-        """,
+        "INSERT OR REPLACE INTO fts_embeddings(rowid, entity_type, entity_id, session_id, exchange_index, content_text, metadata) VALUES (?,?,?,?,?,?,?)",
         (
+            rowid,
             entity_type,
             entity_id,
-            workspace_id,
             session_id,
             exchange_index,
-            content_type,
             content_text,
             json.dumps(metadata, ensure_ascii=False),
-            blob,
         ),
     )
 
@@ -444,7 +490,71 @@ def build_memory_embeddings(conn):
     conn.commit()
 
 
+def _session_behavior_score(conn, base_session_id: str, candidate_session_id: str) -> float:
+    base = conn.execute(
+        "SELECT heat_score, total_tool_calls, saved_session, clean_run FROM session_analysis WHERE session_id=?",
+        (base_session_id,),
+    ).fetchone()
+    cand = conn.execute(
+        "SELECT heat_score, total_tool_calls, saved_session, clean_run FROM session_analysis WHERE session_id=?",
+        (candidate_session_id,),
+    ).fetchone()
+    if not base or not cand:
+        return 0.0
+
+    score = 0.0
+    score += 1.0 if base[2] == cand[2] else 0.0
+    score += 0.5 if base[3] == cand[3] else 0.0
+
+    def heat_bucket(value):
+        if value is None:
+            return -1
+        if value < 40:
+            return 0
+        if value < 70:
+            return 1
+        return 2
+
+    score += 0.5 if heat_bucket(base[0]) == heat_bucket(cand[0]) else 0.0
+    if base[1] is not None and cand[1] is not None:
+        tool_diff = abs(base[1] - cand[1])
+        max_tools = max(base[1], cand[1], 1)
+        score += max(0.0, 0.5 * (1.0 - (tool_diff / max_tools)))
+    return score
+
+
+def find_similar_sessions(conn, session_id: str, top_k: int = 5):
+    row = conn.execute(
+        "SELECT embedding FROM embeddings WHERE entity_type='session' AND entity_id=?",
+        (session_id,),
+    ).fetchone()
+    if not row or not row[0]:
+        return []
+
+    import numpy as np
+
+    target = _deserialize_embedding(row[0])
+    rows = conn.execute(
+        "SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding FROM embeddings WHERE entity_type='session' AND entity_id!=?",
+        (session_id,),
+    ).fetchall()
+    candidates = []
+    for item in rows:
+        emb = _deserialize_embedding(item[6])
+        if emb is None or emb.shape != target.shape:
+            continue
+        semantic_score = float(np.dot(target, emb))
+        behavioral_score = _session_behavior_score(conn, session_id, item['session_id'] or item['entity_id'])
+        score = semantic_score + (behavioral_score * 0.15)
+        candidates.append((score, item))
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return [(item, score) for score, item in candidates[:top_k]]
+
+
 def find_similar_entities(conn, entity_type: str, entity_id: str, top_k: int = 5):
+    if entity_type == 'session':
+        return find_similar_sessions(conn, entity_id, top_k)
+
     row = conn.execute(
         "SELECT embedding FROM embeddings WHERE entity_type=? AND entity_id=?",
         (entity_type, entity_id),
@@ -475,10 +585,27 @@ def semantic_search(conn, query_text: str, top_k: int = 5):
 
     model = get_model()
     query_vec = model.encode([query_text], convert_to_numpy=True, normalize_embeddings=True, show_progress_bar=False)[0].astype("float32")
-    rows = conn.execute(
-        "SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding "
-        "FROM embeddings WHERE entity_type IN ('session','exchange','memory')"
-    ).fetchall()
+    rows = []
+    try:
+        candidate_ids = [r[0] for r in conn.execute(
+            "SELECT rowid FROM fts_embeddings WHERE fts_embeddings MATCH ? LIMIT ?",
+            (query_text, top_k * 5),
+        ).fetchall()]
+        if candidate_ids:
+            placeholder = ",".join("?" for _ in candidate_ids)
+            rows = conn.execute(
+                f"SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding FROM embeddings WHERE id IN ({placeholder})",
+                candidate_ids,
+            ).fetchall()
+    except Exception:
+        rows = []
+
+    if not rows:
+        rows = conn.execute(
+            "SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding "
+            "FROM embeddings WHERE entity_type IN ('session','exchange','memory')"
+        ).fetchall()
+
     candidates = []
     for item in rows:
         emb = _deserialize_embedding(item[6])

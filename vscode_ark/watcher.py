@@ -37,10 +37,13 @@ QUEUE_DIR = ROOT_DIR / "watcher-queue"
 VS_ROOT   = Path.home() / "Library/Application Support/Code/User/workspaceStorage"
 GLOBAL_MEM = Path.home() / "Library/Application Support/Code/User/globalStorage/github.copilot-chat/memory-tool/memories"
 
+log_file = ROOT_DIR / "watcher.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
     datefmt="%H:%M:%S",
+    filename=str(log_file),
+    filemode='a',
 )
 log = logging.getLogger("ark-watcher")
 
@@ -122,6 +125,10 @@ def parse_path(path: Path):
         # chatEditingSessions/<session_id>/state.json
         if len(parts) == 4 and parts[1] == "chatEditingSessions" and parts[3] == "state.json":
             return ws_id, parts[2], "edit_state"
+
+        # chatEditingSessions/<session_id>/contents/<blob_file>
+        if len(parts) == 5 and parts[1] == "chatEditingSessions" and parts[3] == "contents":
+            return ws_id, parts[2], "edit_content"
 
         # GitHub.copilot-chat/memory-tool/memories/**
         if len(parts) >= 5 and parts[1] == "GitHub.copilot-chat" and parts[2] == "memory-tool" and parts[3] == "memories":
@@ -429,6 +436,28 @@ def handle_edit_state(conn, ws_id, session_id, path: Path):
     log.info(f"edit_state   updated    {session_id[:16]}")
 
 
+def handle_edit_content(conn, ws_id, session_id, path: Path):
+    try:
+        raw = path.read_bytes()
+    except Exception:
+        conn.execute(
+            "DELETE FROM vfs WHERE source_path=? AND source_type='edit_content'", (str(path),)
+        )
+        log.info(f"edit_content removed    {session_id[:16]} {path.name}")
+        return
+    conn.execute(
+        "DELETE FROM vfs WHERE source_path=? AND source_type='edit_content'", (str(path),)
+    )
+    conn.execute(
+        """INSERT INTO vfs(workspace_id, session_id, source_type, source_path, filename,
+                           content_type, content, size_bytes, sha256, ingested_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+        (ws_id, session_id, "edit_content", str(path), path.name,
+         "binary", compress(raw), len(raw), sha256_short(raw), now_ms())
+    )
+    log.info(f"edit_content updated    {session_id[:16]} {path.name}")
+
+
 def handle_memory(conn, scope, ws_id, path: Path):
     try:
         content = path.read_text(errors="replace")
@@ -640,6 +669,7 @@ def main():
     c.close()
 
     needs_exchange_rebuild = set()
+    symbol_index_dirty = False
 
     for changes in watch(VS_ROOT, GLOBAL_MEM, watch_filter=lambda change, path: True, yield_on_timeout=True, rust_timeout=500):
         c = get_conn()
@@ -667,7 +697,9 @@ def main():
 
                 elif file_type == "chat_session":
                     session_ws_map[session_id] = ws_id
-                    handle_chat_session(c, ws_id, session_id, path)
+                    n = handle_chat_session(c, ws_id, session_id, path)
+                    if n > 0:
+                        debouncer.mark(session_id, ws_id)
 
                 elif file_type == "tool_output":
                     handle_tool_output(c, ws_id, session_id, path)
@@ -676,6 +708,11 @@ def main():
 
                 elif file_type == "edit_state":
                     handle_edit_state(c, ws_id, session_id, path)
+                    symbol_index_dirty = True
+
+                elif file_type == "edit_content":
+                    handle_edit_content(c, ws_id, session_id, path)
+                    symbol_index_dirty = True
 
                 elif file_type == "memory_workspace":
                     if path.is_file():
@@ -689,6 +726,20 @@ def main():
                     handle_state_vscdb(c, ws_id, path)
 
             c.commit()
+            if symbol_index_dirty:
+                try:
+                    import importlib
+                    extract = importlib.import_module('vscode_ark.extract')
+                    importlib.reload(extract)
+                    c2 = get_conn()
+                    try:
+                        extract.build_symbol_index(c2)
+                        c2.commit()
+                    finally:
+                        c2.close()
+                except Exception as ex:
+                    log.warning(f"symbol index rebuild failed: {ex}")
+                symbol_index_dirty = False
         except Exception as e:
             log.error(f"handler error: {e}", exc_info=True)
         finally:

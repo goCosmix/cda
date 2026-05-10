@@ -301,7 +301,14 @@ cda
 │
 ├── Search
 │   ├── search         # Full-text search
-│   ├── code-search    # Symbol search
+│   ├── code-search    # Symbol and code content search
+│   ├── semantic-search # Semantic search using embeddings
+│   ├── similar        # Similar sessions by semantic similarity
+│   ├── related        # Alias for semantically related sessions
+│   ├── summarize      # Session summary, topics, recommendations
+│   ├── topics         # Semantic topic tags
+│   ├── alerts         # Semantic anomaly alerts
+│   ├── recommend      # Session recommendations
 │   ├── tools          # Tool call search
 │   ├── memory         # Memory files
 │   └── query          # Raw SQL

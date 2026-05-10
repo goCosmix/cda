@@ -13,7 +13,8 @@ A comprehensive data pipeline and analysis system for VS Code/Copilot Chat sessi
 - **Real-time Monitoring** - Live sync daemon with crash-resistant queue system
 - **Full-text Search** - FTS5-powered search across all conversations
 - **Semantic Intelligence** - miniLM embeddings, session summaries, related sessions, anomaly alerts, and recommendations
-- **Code Symbol Indexing** - Search functions, classes, and symbols (extensible to AST parsing)
+- **Code Symbol Indexing** - AST-backed symbol extraction for Python/JS/TS and content search across VFS blobs
+- **Incremental Sync** - Watcher-driven session refreshes keep embeddings and session insight current as chat and tool outputs change
 - **Package-centric Layout** - All runtime code lives under `vscode_ark/` for a clean root.
 - **Policy-based Access Control** - Allow/deny patterns for data filtering
 - **Rich Analytics** - Token usage, context compaction, session recovery analysis
@@ -70,6 +71,7 @@ pip install vscode-ark
    ```bash
    cda watch start
    ```
+   The watcher keeps VS Code updates, code symbols, and embeddings in sync.
 
 3. **Build semantic intelligence:**
    ```bash
@@ -78,11 +80,15 @@ pip install vscode-ark
 
 4. **Explore your data:**
    ```bash
-   cda stats          # System overview
-   cda sessions       # Recent sessions
-   cda search "error" # Search conversations
+   cda stats                    # System overview
+   cda sessions                 # Recent sessions
+   cda search "error"          # Search conversations
+   cda code-search "todo" --regex  # Search code content
+   cda code-search "def process" --symbol  # Search code symbols
    cda semantic-search "confused" # Semantic search
-   cda heat           # Frustration analysis
+   cda related <session>        # Find related sessions
+   cda summarize <session>      # Session summary and recommendations
+   cda heat                     # Frustration analysis
    ```
 
 ## 🧠 SQLite limits and mitigation
@@ -149,7 +155,14 @@ cda workspaces          # List all workspaces
 
 # Search & Query
 cda search <query>      # Full-text search across conversations
-cda code-search <pattern> [--symbol]  # Search code symbols
+cda code-search <pattern> [--symbol] [--regex]  # Search code symbols or code content
+cda semantic-search <query> # Semantic search using embeddings
+cda similar <session>     # Find sessions similar to a session
+cda related <session>     # Alias for semantic related sessions
+cda summarize <session>   # Show session summary, topics, and recommendations
+cda topics                # List semantic topic tags
+cda alerts <session>      # Show semantic anomaly alerts
+cda recommend <session>   # Show session recommendations
 cda tools <query>       # Search tool call arguments
 cda memory              # Show memory files and global state
 
@@ -191,6 +204,15 @@ cda heat --limit 10
 
 # Search for specific functions in code
 cda code-search "def process_data" --symbol
+
+# Search code content with regex or plain text
+cda code-search "timeout" --regex
+
+# Find semantically related sessions
+cda related abc123
+
+# Summarize a session with semantic topics and recommendations
+cda summarize abc123
 
 # Export a session for external analysis
 cda export abc123 --format jsonl --output session.jsonl

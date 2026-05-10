@@ -114,4 +114,4 @@ pmf_logs/
 *.log
 watcher-queue/
 policy.txt
-.DS_Store
+.DS_Store.venv/

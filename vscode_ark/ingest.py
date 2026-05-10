@@ -29,8 +29,10 @@ logging.basicConfig(
 log = logging.getLogger("ark-ingest")
 
 HOME        = Path.home()
-VS_STORAGE  = HOME / "Library/Application Support/Code/User/workspaceStorage"
-GLOBAL_MEM  = HOME / "Library/Application Support/Code/User/globalStorage/github.copilot-chat/memory-tool/memories"
+# Allow override via env var for portability
+VSCODE_DATA_DIR = Path(os.environ.get("VSCODE_DATA_DIR", HOME / "Library/Application Support/Code/User"))
+VS_STORAGE  = VSCODE_DATA_DIR / "workspaceStorage"
+GLOBAL_MEM  = VSCODE_DATA_DIR / "globalStorage/github.copilot-chat/memory-tool/memories"
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DB_PATH     = ROOT_DIR / "vscode-ark.db"
 

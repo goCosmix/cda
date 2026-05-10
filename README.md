@@ -98,6 +98,11 @@ pip install vscode-ark
 - **Default 8KB page size / cache**: this code now sets `PRAGMA cache_size=-2000`, `PRAGMA mmap_size=268435456`, and `PRAGMA temp_store=MEMORY` to improve read/cache performance on larger databases.
 - **Further tuning**: rebuild the DB with a larger page size (e.g. `PRAGMA page_size=32768`) if you need more efficient storage for very large session history.
 
+## 🔧 Configuration
+
+- **VS Code Data Directory**: By default, assumes macOS paths (`~/Library/Application Support/Code/User`). Override with `export VSCODE_DATA_DIR=/path/to/vscode/data` (e.g., on Linux: `~/.config/Code/User`).
+- **No other config needed**: Everything is CLI-driven with local SQLite.
+
 ## 🏗️ Architecture
 
 ```

@@ -11,12 +11,11 @@ We welcome contributions! This document provides guidelines and instructions for
 
 ## Getting Started
 
-### Fork and Clone
+### Clone and setup
 
 ```bash
-git clone https://github.com/yourusername/vscode-ark.git
+git clone https://github.com/goCosmix/vscode-ark.git
 cd vscode-ark
-git remote add upstream https://github.com/original/vscode-ark.git
 ```
 
 ### Setup Development Environment

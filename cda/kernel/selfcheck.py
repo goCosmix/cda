@@ -4,7 +4,7 @@ cda selfcheck — the system knows itself.
 Checks:
   version         — VERSION file exists, valid semver, matches __version__
   install_path    — editable install of cda resolves to this project dir
-  db_present      — local/data/vscode-ark.db exists on disk
+  db_present      — local/data/cda.db exists on disk
   db_accessible   — DB opens and WAL mode is confirmed
   db_integrity    — PRAGMA integrity_check passes
   db_tables       — all expected tables are present
@@ -31,7 +31,7 @@ PACKAGE_DIR  = Path(__file__).resolve().parent
 SOURCE_DIR   = PACKAGE_DIR.parent.parent          # source/  — tracked repo root
 PROJECT_DIR  = PACKAGE_DIR.parent.parent.parent   # repo root — where layers live
 LOCAL_DIR    = PROJECT_DIR / "local"
-DB_PATH      = LOCAL_DIR / "data" / "vscode-ark.db"
+DB_PATH      = LOCAL_DIR / "data" / "cda.db"
 PID_FILE     = LOCAL_DIR / "run" / "watcher.pid"
 QUEUE_DIR    = LOCAL_DIR / "queue"
 VERSION_FILE = SOURCE_DIR / "version"
@@ -108,14 +108,14 @@ def check_install_path():
 
 def check_db_present():
     if not DB_PATH.exists():
-        return _fail("db_present", f"vscode-ark.db not found at {DB_PATH}")
+        return _fail("db_present", f"cda.db not found at {DB_PATH}")
     size_mb = DB_PATH.stat().st_size / (1024 * 1024)
-    return _ok("db_present", f"vscode-ark.db present ({size_mb:.0f} MB)")
+    return _ok("db_present", f"cda.db present ({size_mb:.0f} MB)")
 
 
 def check_db_accessible():
     if not DB_PATH.exists():
-        return _fail("db_accessible", "vscode-ark.db not found — skipping")
+        return _fail("db_accessible", "cda.db not found — skipping")
     try:
         conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=5)
         row = conn.execute("PRAGMA journal_mode").fetchone()
@@ -130,7 +130,7 @@ def check_db_accessible():
 
 def check_db_integrity():
     if not DB_PATH.exists():
-        return _fail("db_integrity", "vscode-ark.db not found — skipping")
+        return _fail("db_integrity", "cda.db not found — skipping")
     try:
         conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=10)
         row = conn.execute("PRAGMA integrity_check(1)").fetchone()
@@ -145,7 +145,7 @@ def check_db_integrity():
 
 def check_db_tables():
     if not DB_PATH.exists():
-        return _fail("db_tables", "vscode-ark.db not found — skipping")
+        return _fail("db_tables", "cda.db not found — skipping")
     try:
         conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=5)
         present = {r[0] for r in conn.execute(
@@ -162,7 +162,7 @@ def check_db_tables():
 
 def check_db_counts():
     if not DB_PATH.exists():
-        return _fail("db_counts", "vscode-ark.db not found — skipping")
+        return _fail("db_counts", "cda.db not found — skipping")
     try:
         conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=5)
         counts = {}

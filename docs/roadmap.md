@@ -1,10 +1,10 @@
-# VS Code Ark Roadmap
+# Code Data Ark Roadmap
 
-This roadmap captures the product direction for VS Code Ark, with a focus on delivering a polished local analytics platform for VS Code + Copilot Chat.
+This roadmap captures the product direction for Code Data Ark, with a focus on delivering a polished local analytics platform for VS Code + Copilot Chat.
 
 ## Vision
 
-VS Code Ark is the local observability and intelligence layer for Copilot Chat sessions. It should make session behavior easy to understand, surface friction, and provide rapid search and review for developers who want to improve AI-assisted workflows.
+Code Data Ark is the local observability and intelligence layer for Copilot Chat sessions. It should make session behavior easy to understand, surface friction, and provide rapid search and review for developers who want to improve AI-assisted workflows.
 
 ## Near-Term Priorities (2.0.x)
 
@@ -29,7 +29,7 @@ VS Code Ark is the local observability and intelligence layer for Copilot Chat s
 
 ## Recent progress
 
-- `v0.1.0` delivered the core VS Code Ark pipeline: ingest, reconstruct, extract, watcher, CLI, search, export, packaging, and documentation.
+- `v0.1.0` delivered the core Code Data Ark pipeline: ingest, reconstruct, extract, watcher, CLI, search, export, packaging, and documentation.
 - `v0.1.1` delivered the professional web UI session drawer, structured data panels, alert and tool-call tables, and complete package distribution of web UI assets.
 - `v0.1.2` delivered release automation, version sync tooling, packaging metadata consolidation, and documentation cleanup.
 - `v2.0.0` delivered the PMF Embedded Kernel for service lifecycle management, 3-layer repo structure (source/local/control), full package reorganization into pipeline/ui/kernel subpackages, and system-wide cleanup.

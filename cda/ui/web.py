@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-vscode-ark Intelligence Portal — Complete Edition
+Code Data Ark Intelligence Portal — Complete Edition
 Light-themed web UI with comprehensive CLI command access.
 All 40+ CLI commands accessible as browser UI pages instead of terminal.
 """
@@ -22,7 +22,7 @@ from cda.kernel.pmf_kernel import PMFKernel
 # Get DB path relative to this file
 PACKAGE_DIR = Path(__file__).resolve().parent
 LOCAL_DIR = PACKAGE_DIR.parent.parent.parent / "local"
-DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
+DB_PATH = LOCAL_DIR / "data" / "cda.db"
 kernel = PMFKernel()
 
 # ─────────────────────────────────────────────
@@ -1448,14 +1448,14 @@ INDEX_HTML = """
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>vscode-ark Intelligence Portal</title>
+    <title>Code Data Ark</title>
     <style>{{STYLE_CSS}}</style>
 </head>
 <body>
     <div id="root">
         <div class="sidebar">
             <div class="sidebar-header">
-                <div class="sidebar-title">vscode-ark</div>
+                <div class="sidebar-title">Code Data Ark</div>
                 <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 5px;">
                     Intelligence & Analysis
                 </div>
@@ -2831,7 +2831,7 @@ def application(environ, start_response):
 
 def start_server(host='127.0.0.1', port=10001):
     """Start WSGI server."""
-    print(f"Starting vscode-ark Intelligence Portal at http://{host}:{port}")
+    print(f"Starting Code Data Ark Intelligence Portal at http://{host}:{port}")
     print("Press Ctrl+C to stop.")
 
     # Use custom server to allow address reuse

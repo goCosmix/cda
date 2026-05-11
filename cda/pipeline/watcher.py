@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-vscode-ark/watcher.py
+cda/watcher.py
 
 Live sync daemon. Watches all VSCode storage locations and streams
-updates into vscode-ark.db as they happen during a session.
+updates into cda.db as they happen during a session.
 
 What it watches:
   - chatSessions/*.jsonl          — append-only, new lines → chat_messages + fts
@@ -40,7 +40,7 @@ except ImportError:
 
 ROOT_DIR  = Path(__file__).resolve().parent.parent.parent.parent
 LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH   = LOCAL_DIR / "data" / "vscode-ark.db"
+DB_PATH   = LOCAL_DIR / "data" / "cda.db"
 PID_FILE  = LOCAL_DIR / "run" / "watcher.pid"
 QUEUE_DIR = LOCAL_DIR / "queue"
 # Allow override via env var for portability
@@ -586,7 +586,7 @@ def main():
     cleanup_old_queue_files()
 
     PID_FILE.write_text(str(os.getpid()))
-    log.info(f"vscode-ark watcher started  pid={os.getpid()}")
+    log.info(f"cda watcher started  pid={os.getpid()}")
     log.info(f"DB: {DB_PATH}")
     log.info(f"Queue: {QUEUE_DIR}")
     log.info(f"Watching: {VS_ROOT}")
@@ -713,7 +713,7 @@ def main():
                 # Skip SQLite WAL/SHM side files and our own DB
                 if path.suffix in ('.wal', '.shm') or path == DB_PATH:
                     continue
-                if 'vscode-ark' in path_str:
+                if 'cda.db' in path_str:
                     continue
 
                 result = parse_path(path)

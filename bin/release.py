@@ -50,7 +50,7 @@ def publish_package():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Release management for vscode-ark")
+    parser = argparse.ArgumentParser(description="Release management for code-data-ark")
     parser.add_argument("--set-version", help="Set a new version and update all version sources")
     parser.add_argument("--sync", action="store_true", help="Sync version sources from VERSION file")
     parser.add_argument("--tag", action="store_true", help="Create a git tag for the current version")

@@ -2,7 +2,7 @@
 
 ## System Overview
 
-VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage data into actionable intelligence about user-AI interactions.
+Code Data Ark is a multi-stage data pipeline that transforms raw VS Code storage data into actionable intelligence about user-AI interactions.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -23,7 +23,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                    │
         ┌──────────▼──────────┐
         │   SQLite Database   │
-        │  (vscode-ark.db)    │
+        │  (cda.db)           │
         │                     │
         │ - workspaces        │
         │ - sessions          │
@@ -487,11 +487,11 @@ cda sync  # Full rebuild
 **Performance Degradation**
 ```bash
 # Check database size
-sqlite3 vscode-ark.db ".tables"
-sqlite3 vscode-ark.db "SELECT COUNT(*) FROM sessions"
+sqlite3 cda.db ".tables"
+sqlite3 cda.db "SELECT COUNT(*) FROM sessions"
 
 # Vacuum and optimize
-sqlite3 vscode-ark.db "VACUUM; ANALYZE;"
+sqlite3 cda.db "VACUUM; ANALYZE;"
 ```
 
 ## Future Architecture

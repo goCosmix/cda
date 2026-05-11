@@ -1,10 +1,10 @@
-# VS Code Ark
+# Code Data Ark
 
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/vscode-ark.svg)](https://pypi.org/project/vscode-ark)
+[![PyPI](https://img.shields.io/pypi/v/code-data-ark.svg)](https://pypi.org/project/code-data-ark)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**VS Code Ark** is a local observability and intelligence platform for VS Code + GitHub Copilot Chat sessions. It ingests everything VS Code writes to disk — transcripts, tool calls, VFS blobs, workspace state — and runs a multi-stage pipeline to turn that raw activity into structured data you can actually reason about.
+**Code Data Ark** (`cda`) is a local observability and intelligence platform for VS Code + GitHub Copilot Chat sessions. It ingests everything VS Code writes to disk — transcripts, tool calls, VFS blobs, workspace state — and runs a multi-stage pipeline to turn that raw activity into structured data you can actually reason about.
 
 The core insight is that your chat history is not just logs. It carries behavioral signals: moments you corrected the agent, redirected it, expressed frustration, or confirmed that something finally worked. Ark extracts those signals, scores session quality with a heat model, and surfaces the patterns — so you can understand how you work with AI, not just what was said.
 
@@ -49,20 +49,20 @@ The runtime is managed by an embedded process kernel (PMF) that supervises the w
 ### Install from PyPI
 
 ```bash
-pip install vscode-ark
+pip install code-data-ark
 ```
 
 ### Install with pipx
 
 ```bash
-pipx install vscode-ark
+pipx install code-data-ark
 ```
 
 ### Install from source
 
 ```bash
-git clone https://github.com/goCosmix/vscode-ark.git
-cd vscode-ark/source
+git clone https://github.com/goCosmix/cda.git
+cd cda/source
 pip install -e .
 ```
 
@@ -138,7 +138,7 @@ The web UI includes:
 
 ## 📦 Package and Release
 
-- Published on PyPI as `vscode-ark`
+- Published on PyPI as `code-data-ark`
 - Current release version: `2.0.2`
 - CLI entry point: `cda`
 - License: MIT
@@ -341,7 +341,7 @@ Heat Score = min(100, Σ(signal_weights))
 
 ### Automatic Detection
 
-VS Code Ark automatically detects paths using standard locations:
+Code Data Ark automatically detects paths using standard locations:
 
 - **macOS**: `~/Library/Application Support/Code/User/`
 - **Windows**: `%APPDATA%\Code\User\`
@@ -350,8 +350,8 @@ VS Code Ark automatically detects paths using standard locations:
 ### Environment Variables
 
 ```bash
-export VSCODE_ARK_DB=/path/to/custom.db    # Custom database location
-export VSCODE_ARK_CONFIG=/path/to/config   # Custom config directory
+export CDA_DB=/path/to/custom.db          # Custom database location
+export CDA_CONFIG=/path/to/config         # Custom config directory
 ```
 
 ### Policy Configuration
@@ -394,7 +394,7 @@ python -m build
 ### Project Structure
 
 ```
-vscode-ark/
+cda/
 ├── .gitignore
 ├── source/                  # all tracked code (pushed to git)
 │   ├── cda/
@@ -406,7 +406,7 @@ vscode-ark/
 │   ├── docs/
 │   └── pyproject.toml
 ├── local/               # runtime state (gitignored, host-only)
-│   ├── data/            # vscode-ark.db
+│   ├── data/            # cda.db
 │   ├── logs/
 │   ├── queue/
 │   ├── run/
@@ -449,4 +449,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**VS Code Ark** - Understanding the human side of AI conversations.
+**Code Data Ark** (`cda`) - Understanding the human side of AI conversations.

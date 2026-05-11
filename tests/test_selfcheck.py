@@ -72,7 +72,7 @@ class TestDbPresent(unittest.TestCase):
 
     def test_present(self):
         from cda.kernel import selfcheck
-        db = self.tmp / "vscode-ark.db"
+        db = self.tmp / "cda.db"
         db.write_bytes(b"x" * 1024)
         selfcheck.DB_PATH = db
         r = selfcheck.check_db_present()
@@ -81,7 +81,7 @@ class TestDbPresent(unittest.TestCase):
 
     def test_missing(self):
         from cda.kernel import selfcheck
-        selfcheck.DB_PATH = self.tmp / "vscode-ark.db"
+        selfcheck.DB_PATH = self.tmp / "cda.db"
         r = selfcheck.check_db_present()
         self.assertFalse(r["passed"])
 
@@ -92,7 +92,7 @@ class TestDbAccessible(unittest.TestCase):
 
     def test_valid_wal(self):
         from cda.kernel import selfcheck
-        db_path = self.tmp / "vscode-ark.db"
+        db_path = self.tmp / "cda.db"
         conn = sqlite3.connect(str(db_path))
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("CREATE TABLE t (x INTEGER)")
@@ -104,7 +104,7 @@ class TestDbAccessible(unittest.TestCase):
 
     def test_corrupt(self):
         from cda.kernel import selfcheck
-        db_path = self.tmp / "vscode-ark.db"
+        db_path = self.tmp / "cda.db"
         db_path.write_bytes(b"not a database")
         selfcheck.DB_PATH = db_path
         r = selfcheck.check_db_accessible()
@@ -112,7 +112,7 @@ class TestDbAccessible(unittest.TestCase):
 
     def test_missing(self):
         from cda.kernel import selfcheck
-        selfcheck.DB_PATH = self.tmp / "vscode-ark.db"
+        selfcheck.DB_PATH = self.tmp / "cda.db"
         r = selfcheck.check_db_accessible()
         self.assertFalse(r["passed"])
         self.assertIn("not found", r["message"])
@@ -124,7 +124,7 @@ class TestDbIntegrity(unittest.TestCase):
 
     def test_passes(self):
         from cda.kernel import selfcheck
-        db_path = self.tmp / "vscode-ark.db"
+        db_path = self.tmp / "cda.db"
         conn = sqlite3.connect(str(db_path))
         conn.execute("CREATE TABLE t (x INTEGER)")
         conn.close()
@@ -135,7 +135,7 @@ class TestDbIntegrity(unittest.TestCase):
 
     def test_missing(self):
         from cda.kernel import selfcheck
-        selfcheck.DB_PATH = self.tmp / "vscode-ark.db"
+        selfcheck.DB_PATH = self.tmp / "cda.db"
         r = selfcheck.check_db_integrity()
         self.assertFalse(r["passed"])
 
@@ -146,7 +146,7 @@ class TestDbTables(unittest.TestCase):
 
     def test_all_present(self):
         from cda.kernel import selfcheck
-        db_path = self.tmp / "vscode-ark.db"
+        db_path = self.tmp / "cda.db"
         conn = sqlite3.connect(str(db_path))
         for t in selfcheck.REQUIRED_TABLES:
             conn.execute(f"CREATE TABLE {t} (id INTEGER)")
@@ -157,7 +157,7 @@ class TestDbTables(unittest.TestCase):
 
     def test_missing_table(self):
         from cda.kernel import selfcheck
-        db_path = self.tmp / "vscode-ark.db"
+        db_path = self.tmp / "cda.db"
         conn = sqlite3.connect(str(db_path))
         conn.execute("CREATE TABLE sessions (id INTEGER)")
         conn.close()
@@ -173,7 +173,7 @@ class TestDbCounts(unittest.TestCase):
 
     def test_populated(self):
         from cda.kernel import selfcheck
-        db_path = self.tmp / "vscode-ark.db"
+        db_path = self.tmp / "cda.db"
         conn = sqlite3.connect(str(db_path))
         for t in selfcheck.CORE_COUNT_TABLES:
             conn.execute(f"CREATE TABLE {t} (id INTEGER)")
@@ -186,7 +186,7 @@ class TestDbCounts(unittest.TestCase):
 
     def test_empty_table(self):
         from cda.kernel import selfcheck
-        db_path = self.tmp / "vscode-ark.db"
+        db_path = self.tmp / "cda.db"
         conn = sqlite3.connect(str(db_path))
         for t in selfcheck.CORE_COUNT_TABLES:
             conn.execute(f"CREATE TABLE {t} (id INTEGER)")
@@ -203,15 +203,15 @@ class TestDbWal(unittest.TestCase):
 
     def test_no_wal(self):
         from cda.kernel import selfcheck
-        selfcheck.DB_PATH = self.tmp / "vscode-ark.db"
+        selfcheck.DB_PATH = self.tmp / "cda.db"
         r = selfcheck.check_db_wal()
         self.assertTrue(r["passed"])
 
     def test_shm_without_wal(self):
         from cda.kernel import selfcheck
-        db_path = self.tmp / "vscode-ark.db"
+        db_path = self.tmp / "cda.db"
         db_path.write_bytes(b"")
-        (self.tmp / "vscode-ark.db-shm").write_bytes(b"")
+        (self.tmp / "cda.db-shm").write_bytes(b"")
         selfcheck.DB_PATH = db_path
         r = selfcheck.check_db_wal()
         self.assertFalse(r["passed"])

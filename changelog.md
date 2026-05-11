@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **3-layer repo architecture**: repo root now has `source/` (tracked code), `local/` (runtime state), `control/` (management artifacts) — `local/` and `control/` are host-only and gitignored
 - **Package reorganization**: `cda/` split into `pipeline/` (ingest, reconstruct, extract, embed, watcher, parse_edits), `ui/` (cli, web), `kernel/` (pmf_kernel, selfcheck) subpackages
 - **Lowercase filenames**: all doc/meta filenames normalized to lowercase throughout `source/`
-- `local/data/vscode-ark.db` is the canonical DB path; all module path depths updated
+- `local/data/cda.db` is the canonical DB path; all module path depths updated
 - Entry point updated: `cda.cli:main` → `cda.ui.cli:main`
 
 ### Fixed
@@ -88,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-05-09
 
 ### Added
-- Initial release of VS Code Ark analysis system
+- Initial release of Code Data Ark analysis system
 - Complete data pipeline for VS Code/Copilot Chat session analysis
 - Behavioral signal extraction with 200+ keywords across 6 signal types
 - Heat score computation (0-100 scale) for frustration analysis

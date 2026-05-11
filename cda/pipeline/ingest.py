@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-vscode-ark/ingest.py
+cda/ingest.py
 
 Extracts all VSCode/Copilot session data into a local SQLite database.
 
@@ -41,7 +41,7 @@ VS_STORAGE  = VSCODE_DATA_DIR / "workspaceStorage"
 GLOBAL_MEM  = VSCODE_DATA_DIR / "globalStorage/github.copilot-chat/memory-tool/memories"
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH  = LOCAL_DIR / "data" / "vscode-ark.db"
+DB_PATH  = LOCAL_DIR / "data" / "cda.db"
 
 # Large index DBs — too big to blob, record path only
 SKIP_BLOB_PATTERNS = ["workspace-chunks.db", "local-index"]
@@ -613,7 +613,7 @@ def ingest_workspace(conn, ws_id: str):
 # ─────────────────────────────────────────────
 
 def main():
-    print(f"vscode-ark ingest → {DB_PATH}")
+    print(f"cda ingest → {DB_PATH}")
 
     if DB_PATH.exists():
         DB_PATH.unlink()

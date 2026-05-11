@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Basic test suite for vscode-ark signal classification algorithms.
+Basic test suite for Code Data Ark signal classification algorithms.
 Run with: python -m pytest tests/ -v
 """
 

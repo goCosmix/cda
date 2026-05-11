@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""embed.py — Semantic intelligence for vscode-ark.
+"""embed.py — Semantic intelligence for Code Data Ark.
 
 This stage builds semantic embeddings and mini-intelligence artifacts:
   - embeddings for sessions, exchanges and memory files
@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
+DB_PATH = LOCAL_DIR / "data" / "cda.db"
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 MAX_EMBED_TEXT = 1400
 

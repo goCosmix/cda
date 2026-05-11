@@ -2,7 +2,7 @@
 """
 extract.py — Signal and token extraction pass.
 
-Processes all chat sessions in vscode-ark.db and populates:
+Processes all chat sessions in cda.db and populates:
   - token_usage        : per-request token accounting
   - compactions        : context window compaction events
   - exchange_signals   : behavioral signals (corrections, affirmations, etc.)
@@ -28,7 +28,7 @@ from collections import defaultdict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
+DB_PATH = LOCAL_DIR / "data" / "cda.db"
 
 # ─────────────────────────────────────────────────────────
 # Signal patterns

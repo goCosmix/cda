@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 cda — Code Direct Ask
-CLI for querying, searching, and managing the vscode-ark session database.
+CLI for querying, searching, and managing the Code Data Ark session database.
 
 Commands:
   cda search <query>         Full-text search across all exchanges
@@ -69,7 +69,7 @@ import click
 PACKAGE_DIR = Path(__file__).resolve().parent
 ARK_DIR = PACKAGE_DIR.parent.parent.parent
 LOCAL_DIR = ARK_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
+DB_PATH = LOCAL_DIR / "data" / "cda.db"
 PID_FILE = LOCAL_DIR / "run" / "watcher.pid"
 UI_PID_FILE = LOCAL_DIR / "run" / "ui.pid"
 UI_LOG_FILE = LOCAL_DIR / "logs" / "ui.log"
@@ -260,7 +260,7 @@ def stats():
     """System-wide stats and coverage summary."""
     conn = db()
     click.echo()
-    click.echo(bold("  vscode-ark  ") + dim(str(DB_PATH)))
+    click.echo(bold("  Code Data Ark  ") + dim(str(DB_PATH)))
     click.echo(hr())
 
     tables = [
@@ -369,7 +369,7 @@ def status():
 @click.option("--host", default="127.0.0.1", show_default=True, help="Local host to bind the web UI")
 @click.option("--port", default=10001, show_default=True, help="Local port for the web UI")
 def serve(host, port):
-    """Start the local web UI for vscode-ark in the foreground."""
+    """Start the local web UI for Code Data Ark in the foreground."""
     click.echo(yellow(f"  Starting local web UI at http://{host}:{port}"))
     click.echo(yellow("  Use `cda ui start` to launch it as a background service."))
     try:
@@ -385,7 +385,7 @@ def serve(host, port):
 
 @cli.group()
 def ui():
-    """Manage the vscode-ark web UI as a background service."""
+    """Manage the Code Data Ark web UI as a background service."""
     pass
 
 
@@ -788,7 +788,7 @@ def sync():
     else:
         stages_done.append("embed")
 
-    # Collect final counts from vscode-ark.db
+    # Collect final counts from cda.db
     counts = {}
     try:
         _conn = sqlite3.connect(DB_PATH)

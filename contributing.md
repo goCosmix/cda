@@ -1,4 +1,4 @@
-# Contributing to VS Code Ark
+# Contributing to Code Data Ark
 
 We welcome contributions! This document provides guidelines and instructions for contributing.
 
@@ -14,8 +14,8 @@ We welcome contributions! This document provides guidelines and instructions for
 ### Clone and setup
 
 ```bash
-git clone https://github.com/goCosmix/vscode-ark.git
-cd vscode-ark/source
+git clone https://github.com/goCosmix/cda.git
+cd cda/source
 ```
 
 ### Setup Development Environment
@@ -164,7 +164,7 @@ Create an issue with:
 Understanding the codebase:
 
 ```
-vscode-ark/
+cda/
 ├── .gitignore
 ├── source/                  # all tracked code lives here
 │   ├── cda/                 # Python package
@@ -189,7 +189,7 @@ vscode-ark/
 │   ├── pyproject.toml
 │   └── makefile
 ├── local/               # runtime state (gitignored)
-│   ├── data/            # vscode-ark.db
+│   ├── data/            # cda.db
 │   ├── logs/
 │   ├── queue/
 │   ├── run/             # pid files
@@ -294,4 +294,4 @@ python -m pytest tests/test_basic.py::test_signal_patterns_import -v
 
 ---
 
-Thank you for contributing to VS Code Ark! 🎉
+Thank you for contributing to Code Data Ark!

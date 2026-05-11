@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "vscode-ark"
+name = "code-data-ark"
 version = "2.0.2"
-description = "Comprehensive analysis system for VS Code/Copilot Chat sessions with behavioral signal extraction and heat scoring"
+description = "Code Data Ark — local observability and intelligence platform for VS Code + Copilot Chat sessions"
 readme = "readme.md"
 license = "MIT"
 license-files = ["license"]
@@ -56,11 +56,11 @@ test = [
 cda = "cda.ui.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/goCosmix/vscode-ark"
-Repository = "https://github.com/goCosmix/vscode-ark.git"
-Issues = "https://github.com/goCosmix/vscode-ark/issues"
-Documentation = "https://github.com/goCosmix/vscode-ark#readme"
-Changelog = "https://github.com/goCosmix/vscode-ark/blob/main/changelog.md"
+Homepage = "https://github.com/goCosmix/cda"
+Repository = "https://github.com/goCosmix/cda.git"
+Issues = "https://github.com/goCosmix/cda/issues"
+Documentation = "https://github.com/goCosmix/cda#readme"
+Changelog = "https://github.com/goCosmix/cda/blob/main/changelog.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["cda"]

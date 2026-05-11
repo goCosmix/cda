@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-vscode-ark/reconstruct.py
+cda/reconstruct.py
 
 Walks transcript_events for every session and builds fully-structured
 request/response exchanges, joining tool outputs from the VFS.
@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
+DB_PATH = LOCAL_DIR / "data" / "cda.db"
 NOW_MS  = int(time.time() * 1000)
 
 EXCHANGES_SCHEMA = """

@@ -225,6 +225,44 @@ def seed_manifest(conn):
     print(f"  manifest: {len(rows)} files indexed ({skipped} dirs/excluded skipped)")
 
 
+def seed_tables(conn):
+    """Create control tables if they don't already exist."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS health (
+            id          INTEGER PRIMARY KEY,
+            run_at      TEXT NOT NULL,
+            check_name  TEXT NOT NULL,
+            passed      INTEGER NOT NULL,
+            message     TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS runs (
+            id              INTEGER PRIMARY KEY,
+            started_at      TEXT NOT NULL,
+            finished_at     TEXT,
+            trigger         TEXT NOT NULL DEFAULT 'manual',
+            stages          TEXT,
+            sessions        INTEGER,
+            exchanges       INTEGER,
+            tool_calls      INTEGER,
+            vfs_files       INTEGER,
+            errors          INTEGER DEFAULT 0,
+            exit_code       INTEGER,
+            notes           TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS events (
+            id          INTEGER PRIMARY KEY,
+            occurred_at TEXT NOT NULL,
+            kind        TEXT NOT NULL,
+            actor       TEXT,
+            subject     TEXT,
+            detail      TEXT
+        );
+    """)
+    print("  tables: health, runs, events — ready")
+
+
 def main():
     CONTROL_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Control DB: {DB_PATH}")
@@ -240,6 +278,8 @@ def main():
         seed_identity(conn)
         print("Seeding manifest...")
         seed_manifest(conn)
+        print("Ensuring control tables...")
+        seed_tables(conn)
 
     conn.close()
     print()

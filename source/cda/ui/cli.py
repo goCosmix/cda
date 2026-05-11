@@ -729,33 +729,61 @@ def watch_restart():
 @cli.command()
 def sync():
     """Full re-ingest from disk (rebuilds entire DB)."""
+    from cda.kernel.control_db import start_run, finish_run, log_event
+
+    run_id = start_run(trigger="manual")
+    stages_done = []
+    errors = 0
+
     click.echo(yellow("  Running full ingest — this rewrites the DB..."))
     result = subprocess.run([sys.executable, str(INGEST)], capture_output=False)
     if result.returncode != 0:
         click.echo(red("  Ingest failed"))
+        finish_run(run_id, stages_done, {}, errors=1, exit_code=1, notes="ingest failed")
         return
+    stages_done.append("ingest")
 
     click.echo(green("  Ingest complete"))
     click.echo(yellow("  Running reconstruction..."))
     result = subprocess.run([sys.executable, str(RECON)], capture_output=False)
     if result.returncode != 0:
         click.echo(red("  Reconstruction failed"))
+        finish_run(run_id, stages_done, {}, errors=1, exit_code=1, notes="reconstruct failed")
         return
+    stages_done.append("reconstruct")
 
     click.echo(green("  Reconstruction complete"))
     click.echo(yellow("  Running analysis..."))
     result = subprocess.run([sys.executable, str(EXTRACT)], capture_output=False)
     if result.returncode != 0:
         click.echo(red("  Analysis failed"))
+        finish_run(run_id, stages_done, {}, errors=1, exit_code=1, notes="extract failed")
         return
+    stages_done.append("extract")
 
     click.echo(green("  Analysis complete"))
     click.echo(yellow("  Running semantic intelligence..."))
     result = subprocess.run([sys.executable, str(EMBED)], capture_output=False)
     if result.returncode != 0:
         click.echo(red("  Semantic intelligence failed"))
-        return
+        errors += 1
+    else:
+        stages_done.append("embed")
 
+    # Collect final counts from vscode-ark.db
+    counts = {}
+    try:
+        _conn = sqlite3.connect(DB_PATH)
+        counts["sessions"]   = _conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        counts["exchanges"]  = _conn.execute("SELECT COUNT(*) FROM exchanges").fetchone()[0]
+        counts["tool_calls"] = _conn.execute("SELECT COUNT(*) FROM tool_calls").fetchone()[0]
+        counts["vfs_files"]  = _conn.execute("SELECT COUNT(*) FROM vfs").fetchone()[0]
+        _conn.close()
+    except Exception:
+        pass
+
+    finish_run(run_id, stages_done, counts, errors=errors, exit_code=0)
+    log_event("sync.complete", detail=f"sessions={counts.get('sessions')}, exchanges={counts.get('exchanges')}")
     click.echo(green("  Done"))
 
 @cli.command()
@@ -2298,6 +2326,167 @@ def tokens(session_id, limit):
 
 
 # ─────────────────────────────────────────────
+# CONTROL
+# ─────────────────────────────────────────────
+
+@cli.group("control")
+def control_group():
+    """Inspect and query the control plane (identity, health, runs, events)."""
+    pass
+
+
+@control_group.command("status")
+def control_status():
+    """Show control DB identity snapshot."""
+    from cda.kernel.control_db import CONTROL_DB
+    if not CONTROL_DB.exists():
+        click.echo(red("  control.db not found — run: python control/scripts/seed.py"))
+        return
+    conn = sqlite3.connect(CONTROL_DB)
+    rows = conn.execute("SELECT key, value FROM identity ORDER BY id").fetchall()
+    conn.close()
+    click.echo()
+    click.echo(bold("  control plane — identity"))
+    click.echo(hr())
+    for key, val in rows:
+        click.echo(f"  {cyan(key.ljust(20))}  {val or dim('—')}")
+    click.echo()
+
+
+@control_group.command("health")
+@click.option("--tail", default=14, show_default=True, help="Show last N check runs.")
+@click.option("--check", "check_name", default=None, help="Filter to a specific check name.")
+def control_health(tail, check_name):
+    """Show recent selfcheck history from the health table."""
+    from cda.kernel.control_db import CONTROL_DB
+    if not CONTROL_DB.exists():
+        click.echo(red("  control.db not found"))
+        return
+    conn = sqlite3.connect(CONTROL_DB)
+    if check_name:
+        rows = conn.execute(
+            "SELECT run_at, check_name, passed, message FROM health "
+            "WHERE check_name=? ORDER BY id DESC LIMIT ?",
+            (check_name, tail)
+        ).fetchall()
+    else:
+        # latest full run (by run_at) — most recent N distinct timestamps
+        run_ats = [r[0] for r in conn.execute(
+            "SELECT DISTINCT run_at FROM health ORDER BY run_at DESC LIMIT ?", (tail,)
+        ).fetchall()]
+        rows = []
+        for ts in run_ats:
+            batch = conn.execute(
+                "SELECT run_at, check_name, passed, message FROM health WHERE run_at=? ORDER BY id",
+                (ts,)
+            ).fetchall()
+            rows.extend(batch)
+    conn.close()
+
+    if not rows:
+        click.echo(dim("  (no health history yet — run cda check)"))
+        return
+
+    click.echo()
+    last_ts = None
+    for run_at, name, passed, msg in rows:
+        ts_short = run_at[:19].replace("T", " ")
+        if ts_short != last_ts:
+            click.echo(bold(f"\n  {ts_short}"))
+            last_ts = ts_short
+        icon = green("✓") if passed else red("✗")
+        click.echo(f"    {icon}  {cyan(name.ljust(20))}  {msg or ''}")
+    click.echo()
+
+
+@control_group.command("runs")
+@click.option("--tail", default=10, show_default=True, help="Show last N sync runs.")
+def control_runs(tail):
+    """Show recent sync pipeline run history."""
+    from cda.kernel.control_db import CONTROL_DB
+    if not CONTROL_DB.exists():
+        click.echo(red("  control.db not found"))
+        return
+    conn = sqlite3.connect(CONTROL_DB)
+    rows = conn.execute(
+        "SELECT started_at, finished_at, trigger, stages, sessions, exchanges, "
+        "tool_calls, vfs_files, errors, exit_code, notes "
+        "FROM runs ORDER BY id DESC LIMIT ?",
+        (tail,)
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        click.echo(dim("  (no sync runs recorded yet)"))
+        return
+
+    click.echo()
+    click.echo(bold(f"  last {len(rows)} sync run(s)"))
+    click.echo(hr())
+    for r in rows:
+        started, finished, trigger, stages, sessions, exchanges, tc, vfs, errs, exit_c, notes = r
+        duration = ""
+        if started and finished:
+            try:
+                from datetime import datetime, timezone
+                s = datetime.fromisoformat(started)
+                f = datetime.fromisoformat(finished)
+                secs = int((f - s).total_seconds())
+                duration = f"  {dim(str(secs) + 's')}"
+            except Exception:
+                pass
+        status_icon = green("✓") if (exit_c == 0) else red("✗")
+        ts = started[:19].replace("T", " ")
+        click.echo(
+            f"  {status_icon}  {cyan(ts)}{duration}  "
+            f"sessions={bold(str(sessions or '?'))}  "
+            f"exchanges={bold(str(exchanges or '?'))}  "
+            f"stages={dim(stages or '?')}"
+        )
+        if notes:
+            click.echo(f"       {dim(notes)}")
+    click.echo()
+
+
+@control_group.command("events")
+@click.option("--tail", default=20, show_default=True, help="Show last N events.")
+@click.option("--kind", default=None, help="Filter by event kind (e.g. sync.complete).")
+def control_events(tail, kind):
+    """Show the system event log."""
+    from cda.kernel.control_db import CONTROL_DB
+    if not CONTROL_DB.exists():
+        click.echo(red("  control.db not found"))
+        return
+    conn = sqlite3.connect(CONTROL_DB)
+    if kind:
+        rows = conn.execute(
+            "SELECT occurred_at, kind, actor, subject, detail FROM events "
+            "WHERE kind=? ORDER BY id DESC LIMIT ?", (kind, tail)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT occurred_at, kind, actor, subject, detail FROM events "
+            "ORDER BY id DESC LIMIT ?", (tail,)
+        ).fetchall()
+    conn.close()
+
+    if not rows:
+        click.echo(dim("  (no events recorded yet)"))
+        return
+
+    click.echo()
+    click.echo(bold(f"  last {len(rows)} event(s)"))
+    click.echo(hr())
+    for occurred_at, evkind, actor, subject, detail in rows:
+        ts = occurred_at[:19].replace("T", " ")
+        click.echo(
+            f"  {cyan(ts)}  {bold(evkind.ljust(20))}  "
+            f"{dim(actor or '')}  {subject or ''}  {dim(detail or '')}"
+        )
+    click.echo()
+
+
+# ─────────────────────────────────────────────
 # SELF CHECK
 # ─────────────────────────────────────────────
 
@@ -2307,6 +2496,10 @@ def tokens(session_id, limit):
 def check(as_json, fail_fast):
     """Run a full self-diagnostic. The system checks itself."""
     from cda.kernel.selfcheck import CHECKS
+    from cda.kernel.control_db import write_health
+    from datetime import datetime, timezone
+
+    run_at = datetime.now(timezone.utc).isoformat()
 
     if not as_json:
         click.echo()
@@ -2333,6 +2526,9 @@ def check(as_json, fail_fast):
 
         if fail_fast and not passed:
             break
+
+    # Write results to control DB (silent — never blocks)
+    write_health(results, run_at=run_at)
 
     if as_json:
         import json as _json

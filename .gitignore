@@ -45,6 +45,7 @@ control/data/
 control/audit/
 control/cache/
 control/scan/
+# control/scripts/ and control/docs/ are tracked
 
 # Database files
 *.db

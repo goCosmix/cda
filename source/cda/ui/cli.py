@@ -54,6 +54,7 @@ Commands:
 import os, sys, json, gzip, sqlite3, subprocess, signal, textwrap, time, datetime
 from pathlib import Path
 from cda.pipeline.reconstruct import decompress_vfs
+from cda.kernel.pmf_kernel import PMFKernel, PMFKernelError
 
 import click
 
@@ -70,6 +71,8 @@ INGEST = PACKAGE_DIR.parent / "pipeline" / "ingest.py"
 RECON = PACKAGE_DIR.parent / "pipeline" / "reconstruct.py"
 EXTRACT = PACKAGE_DIR.parent / "pipeline" / "extract.py"
 EMBED = PACKAGE_DIR.parent / "pipeline" / "embed.py"
+
+kernel = PMFKernel()
 
 
 # ─────────────────────────────────────────────

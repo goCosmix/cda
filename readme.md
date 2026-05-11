@@ -52,10 +52,17 @@ The runtime is managed by an embedded process kernel (PMF) that supervises the w
 pip install code-data-ark
 ```
 
+> **macOS / system Python note**: pip installs the `cda` binary to `~/Library/Python/3.x/bin/` which is not on `PATH` by default. Use the fallback below — `cda setup` will fix PATH for you automatically:
+>
+> ```bash
+> python3 -m cda setup
+> ```
+
 ### Install with pipx
 
 ```bash
 pipx install code-data-ark
+# pipx automatically manages PATH — `cda setup` works immediately
 ```
 
 ### Install from source
@@ -74,25 +81,27 @@ pip install -e ".[dev]"
 make install-dev
 ```
 
-> The `cda` console command is installed into your active Python environment's `bin` directory. Activate your virtual environment before running `cda`.
+> The `cda` console command is installed into your Python environment's `bin` directory. If it isn't on PATH yet, use `python3 -m cda setup` — setup patches `~/.zprofile` automatically.
 
 ## ⚡ Quick Start
 
 ```bash
 pip install code-data-ark
-cda setup
+python3 -m cda setup   # use this if `cda` isn't on PATH yet
 ```
 
-That's it. `cda setup` runs four steps in sequence:
+After the first run, `cda setup` patches `~/.zprofile` so `cda` is on PATH in every new terminal.
+
+`cda setup` runs four steps in sequence:
 
 | Step | What it does |
 |------|-------------|
-| **1. Init** | Creates `~/.cda/` directory tree, validates your VS Code data path |
-| **2. PMF install** | Registers a macOS LaunchAgent — CDA starts automatically on every login |
-| **3. Sync** | Ingests all VS Code + Copilot session data into `~/.cda/data/cda.db` |
+| **1. Init** | Creates `~/Library/goCosmix/apps/code-data-ark/` — all app data in one organized namespace. Also patches `~/.zprofile` if `cda` isn't on PATH yet. |
+| **2. PMF install** | Registers a macOS LaunchAgent — CDA starts automatically on every login via `cda pmf up` |
+| **3. Sync** | Ingests all VS Code + Copilot session data into `cda.db` |
 | **4. Up** | Starts the watcher daemon and web UI via the PMF kernel, opens browser |
 
-After setup, everything is managed by the **PMF kernel**. On every login, `launchd` calls `cda pmf up` which starts the watcher and web UI. No terminal interaction required.
+All data lives in `~/Library/goCosmix/apps/code-data-ark/`. After setup, everything is managed by the **PMF kernel** — no terminal interaction required.
 
 ### Options
 

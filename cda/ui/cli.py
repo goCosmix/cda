@@ -28,7 +28,7 @@ Commands:
   cda pmf install            Register as macOS LaunchAgent (auto-start on login)
   cda pmf uninstall          Remove the LaunchAgent registration
   cda check                  Run a full self-diagnostic. The system checks itself.
-  cda init                   First-run setup — create ~/.cda/ and validate environment
+  cda init                   First-run setup — create ~/Library/goCosmix/ and validate environment
   cda setup                  Full onboarding: init → pmf install → sync → up (browser opens)
   cda serve                  Start the local web UI on port 10001
   cda sync                   Full re-ingest from disk (rebuilds entire DB)
@@ -2671,13 +2671,14 @@ def setup(skip_sync, no_browser):
     Full onboarding in four steps: init → pmf install → sync → up.
 
     \b
-    Run this once after `pip install code-data-ark`:
+    Run this once after `pip install code-data-ark`.
+    If `cda` isn't on PATH yet, use the fallback:
 
-        cda setup
+        python3 -m cda setup
 
     \b
     What each step does:
-      1. Init    — create ~/.cda/ directory tree, validate VS Code data path
+      1. Init    — create ~/Library/goCosmix/apps/code-data-ark/, patch PATH
       2. Install — register a macOS LaunchAgent so CDA starts on every login
       3. Sync    — ingest all VS Code + Copilot session data into cda.db
       4. Up      — start the watcher daemon and web UI via PMF, open browser
@@ -2685,11 +2686,13 @@ def setup(skip_sync, no_browser):
     All processes are managed by the PMF kernel. The LaunchAgent calls
     `cda pmf up` on every login — no manual interaction needed after setup.
     """
+    import shutil as _shutil
+    import os as _os
     from cda.kernel.paths import (
         CDA_HOME, DATA_DIR, RUN_DIR, LOG_DIR, QUEUE_DIR,
         PMF_DIR, PMF_LOG_DIR, CONFIG_DIR, POLICY_FILE,
+        GOCOSMIX_HOME, GOCOSMIX_APPS, GOCOSMIX_SYSTEM,
     )
-    import os as _os
 
     W = 52
     BAR = "═" * W
@@ -2715,14 +2718,28 @@ def setup(skip_sync, no_browser):
     click.echo(bold(bar))
     click.echo()
 
-    dirs = [DATA_DIR, RUN_DIR, LOG_DIR, QUEUE_DIR, PMF_DIR, PMF_LOG_DIR, CONFIG_DIR]
+    # Create full goCosmix namespace + app dirs
+    dirs = [GOCOSMIX_HOME, GOCOSMIX_APPS, GOCOSMIX_SYSTEM,
+            DATA_DIR, RUN_DIR, LOG_DIR, QUEUE_DIR, PMF_DIR, PMF_LOG_DIR, CONFIG_DIR]
     for d in dirs:
+        existed = d.exists()
         d.mkdir(parents=True, exist_ok=True)
-        click.echo(f"    {green('✓')}  {d}")
+        if not existed:
+            click.echo(f"    {green('+')}  {d}")
+        else:
+            click.echo(f"    {green('✓')}  {d}")
 
     if not POLICY_FILE.exists():
         POLICY_FILE.write_text("# CDA access policy\n# ALLOW <pattern>\n# DENY  <pattern>\n")
 
+    # Offer migration from legacy ~/.cda/
+    legacy = Path.home() / ".cda"
+    if legacy.exists() and legacy != CDA_HOME:
+        click.echo()
+        click.echo(yellow(f"    ⚠  Legacy data found at {legacy}"))
+        click.echo(yellow("       Run `cda migrate-home` after setup to move it to the new location."))
+
+    # VS Code data dir check
     vscode_data = Path(_os.environ.get(
         "VSCODE_DATA_DIR",
         Path.home() / "Library/Application Support/Code/User",
@@ -2737,25 +2754,54 @@ def setup(skip_sync, no_browser):
     click.echo(f"    {green('✓')}  CDA_HOME: {CDA_HOME}")
     click.echo()
 
+    # ── PATH patch ───────────────────────────────────────────────
+    # Detect where pip placed the `cda` binary and ensure it's on PATH.
+    # Works whether invoked as `cda setup` or `python3 -m cda setup`.
+    cda_bin_dir = None
+    cda_bin = _shutil.which("cda")
+    if cda_bin:
+        cda_bin_dir = str(Path(cda_bin).parent)
+    else:
+        # pip install --user puts scripts next to python executable
+        py_bin_dir = Path(sys.executable).parent
+        candidate = py_bin_dir / "cda"
+        if candidate.exists():
+            cda_bin_dir = str(py_bin_dir)
+
+    if cda_bin_dir and cda_bin_dir not in _os.environ.get("PATH", "").split(":"):
+        export_line = f'export PATH="{cda_bin_dir}:$PATH"'
+        zprofile = Path.home() / ".zprofile"
+        existing = zprofile.read_text() if zprofile.exists() else ""
+        if export_line not in existing:
+            with open(zprofile, "a") as f:
+                f.write(f"\n# goCosmix — added by cda setup\n{export_line}\n")
+            click.echo(f"    {green('+')}  PATH updated in ~/.zprofile")
+            click.echo(yellow("         Run `source ~/.zprofile` or open a new terminal to activate."))
+        click.echo(f"    {green('✓')}  cda binary: {cda_bin_dir}/cda")
+    elif cda_bin:
+        click.echo(f"    {green('✓')}  cda binary on PATH: {cda_bin}")
+
+    click.echo()
+
     # ── Step 2: PMF install ──────────────────────────────────────
     click.echo(bold(bar))
     click.echo(bold("  Step 2/4 — PMF install"))
     click.echo(bold(bar))
     click.echo()
     click.echo(dim("  The LaunchAgent registers CDA with macOS launchd. On every login,"))
-    click.echo(dim("  launchd calls `cda pmf up` which starts the watcher daemon and"))
-    click.echo(dim("  web UI via the PMF kernel — no terminal required."))
+    click.echo(dim("  launchd calls `cda pmf up` — starts watcher + web UI via PMF kernel."))
+    click.echo(dim("  No terminal required after this."))
     click.echo()
 
     pmf_ok = False
     try:
         target = install_launchd(CDA_HOME)
         click.echo(f"    {green('✓')}  LaunchAgent: {target}")
-        click.echo(f"    {green('✓')}  Loaded — CDA will start automatically on every login")
+        click.echo(f"    {green('✓')}  Loaded — CDA starts automatically on every login")
         pmf_ok = True
     except PMFKernelError as exc:
         click.echo(f"    {yellow('⚠')}  LaunchAgent registration failed: {exc}")
-        click.echo(yellow("         Ensure `cda` is on PATH, then run `cda pmf install` to retry."))
+        click.echo(yellow("         Fix PATH then run `cda pmf install` to retry."))
     click.echo()
 
     # ── Step 3: Sync ─────────────────────────────────────────────
@@ -2769,7 +2815,7 @@ def setup(skip_sync, no_browser):
         click.echo()
     else:
         click.echo(dim("  Scanning VS Code workspaceStorage and building cda.db."))
-        click.echo(dim("  First run may take several minutes depending on session history."))
+        click.echo(dim("  First run may take a few minutes depending on session history."))
         click.echo()
 
         sync_failed = False
@@ -2833,15 +2879,15 @@ def setup(skip_sync, no_browser):
     click.echo(bold(BAR))
     click.echo()
     if pmf_ok:
-        click.echo(dim("  CDA will start automatically on every login via launchd."))
-    click.echo(dim("  The watcher daemon stays in sync with your VS Code sessions."))
+        click.echo(dim("  CDA starts automatically on every login via launchd."))
+    click.echo(dim("  The watcher daemon keeps your session data in sync automatically."))
     click.echo(dim(f"  Visit {url} any time to explore your data."))
     click.echo()
     click.echo(dim("  Useful commands:"))
     click.echo(dim("    cda check          — full system health diagnostic"))
     click.echo(dim("    cda sync           — re-ingest after significant new session activity"))
     click.echo(dim("    cda pmf services   — view running services and their status"))
-    click.echo(dim("    cda pmf uninstall  — remove auto-start LaunchAgent registration"))
+    click.echo(dim("    cda pmf uninstall  — remove the auto-start LaunchAgent"))
     click.echo()
 
 
@@ -2851,7 +2897,7 @@ def setup(skip_sync, no_browser):
 
 @cli.command("init")
 def init():
-    """First-run setup — create ~/.cda/ directory structure and validate environment."""
+    """First-run setup — create ~/Library/goCosmix/apps/code-data-ark/ directory structure and validate environment."""
     from cda.kernel.paths import (
         CDA_HOME, DATA_DIR, RUN_DIR, LOG_DIR, QUEUE_DIR,
         PMF_DIR, PMF_LOG_DIR, CONFIG_DIR, POLICY_FILE,

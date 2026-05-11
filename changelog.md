@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.6] - 2026-05-11
+
+### Added
+- **`~/Library/goCosmix/` home namespace** — all goCosmix apps share a unified `~/Library/goCosmix/` directory (macOS) or `~/.gocosmix/` (other). CDA now installs to `~/Library/goCosmix/apps/code-data-ark/` instead of `~/.cda/`. Provides a clean, organized home for all future goCosmix systems.
+- **`GOCOSMIX_HOME`, `GOCOSMIX_APPS`, `GOCOSMIX_SYSTEM`** constants in `cda.kernel.paths` — shared namespace anchors for future goCosmix apps.
+- **Auto PATH patching in `cda setup`** — detects where pip placed the `cda` binary and patches `~/.zprofile` if the bin dir is missing from PATH. Solves the macOS system Python `command not found` blocker.
+- **`python3 -m cda` entry point** (`cda/__main__.py`) — bootstrapping fallback so users can run `python3 -m cda setup` before PATH is configured.
+- **Legacy migration notice** — `cda setup` detects an existing `~/.cda/` and advises running `cda migrate-home`.
+
+### Changed
+- `cda.kernel.paths.get_cda_home()` default changed from `~/.cda` to `~/Library/goCosmix/apps/code-data-ark` (macOS) / `~/.gocosmix/apps/code-data-ark` (other). `CDA_HOME` env var still overrides.
+- `ensure_dirs()` now creates the full goCosmix namespace tree in addition to app-level dirs.
+- README quickstart updated: install command is `python3 -m cda setup` as the safe default.
+- `cda setup` Step 1 shows `+` for new dirs and `✓` for existing ones.
+
 ## [2.0.5] - 2026-05-11
 
 ### Added

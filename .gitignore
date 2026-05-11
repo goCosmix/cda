@@ -233,6 +233,4 @@ pmf_runtime.json
 *.log
 .venv/
 local/
-build/
-cache/
-sys/
+control/

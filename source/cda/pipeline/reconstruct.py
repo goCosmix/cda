@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS exchanges (
     tool_call_count INTEGER,
     has_tool_output INTEGER,   -- 1 if any tool call has a VFS payload
     session_meta    TEXT,      -- from session.start event (versions, producer)
-    ingested_at     INTEGER
+    ingested_at     INTEGER,
+    UNIQUE(session_id, exchange_index)
 );
 CREATE INDEX IF NOT EXISTS ex_session   ON exchanges(session_id);
 CREATE INDEX IF NOT EXISTS ex_workspace ON exchanges(workspace_id);
@@ -239,7 +240,7 @@ def reconstruct_session(conn, session_id: str, workspace_id: str) -> int:
         has_output = any(tc.get("output") is not None for tc in all_tool_calls)
 
         conn.execute(
-            """INSERT INTO exchanges(
+            """INSERT OR IGNORE INTO exchanges(
                 session_id, workspace_id, exchange_index, request_id,
                 user_ts, assistant_ts,
                 user_message, attachments,

@@ -1009,7 +1009,7 @@ def exchange(session_id, index, tool_outputs, reasoning):
         except Exception:
             calls = []
         for i, tc in enumerate(calls):
-            click.echo(f"\n    {bold(f'[{i}]')} {yellow(tc.get('name', '?'))}  {dim(tc.get('toolCallId','')[:24])}")
+            click.echo(f"\n    {bold(f'[{i}]')} {yellow(tc.get('name', '?'))}  {dim(tc.get('toolCallId', '')[:24])}")
             args = tc.get('arguments', {})
             if isinstance(args, dict):
                 for k, v in args.items():

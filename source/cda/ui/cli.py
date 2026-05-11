@@ -53,23 +53,23 @@ Commands:
 
 import os, sys, json, gzip, sqlite3, subprocess, signal, textwrap, time, datetime
 from pathlib import Path
-from cda.reconstruct import decompress_vfs
+from cda.pipeline.reconstruct import decompress_vfs
 
 import click
 
 # Package-relative paths
 PACKAGE_DIR = Path(__file__).resolve().parent
-ARK_DIR = PACKAGE_DIR.parent.parent
+ARK_DIR = PACKAGE_DIR.parent.parent.parent
 LOCAL_DIR = ARK_DIR / "local"
 DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
 PID_FILE = LOCAL_DIR / "run" / "watcher.pid"
 UI_PID_FILE = LOCAL_DIR / "run" / "ui.pid"
 UI_LOG_FILE = LOCAL_DIR / "logs" / "ui.log"
-WATCHER = PACKAGE_DIR / "watcher.py"
-INGEST = PACKAGE_DIR / "ingest.py"
-RECON = PACKAGE_DIR / "reconstruct.py"
-EXTRACT = PACKAGE_DIR / "extract.py"
-EMBED = PACKAGE_DIR / "embed.py"
+WATCHER = PACKAGE_DIR.parent / "pipeline" / "watcher.py"
+INGEST = PACKAGE_DIR.parent / "pipeline" / "ingest.py"
+RECON = PACKAGE_DIR.parent / "pipeline" / "reconstruct.py"
+EXTRACT = PACKAGE_DIR.parent / "pipeline" / "extract.py"
+EMBED = PACKAGE_DIR.parent / "pipeline" / "embed.py"
 
 
 # ─────────────────────────────────────────────
@@ -356,7 +356,7 @@ def serve(host, port):
     click.echo(yellow("  Use `cda ui start` to launch it as a background service."))
     try:
         import importlib
-        import cda.web as web
+        import cda.ui.web as web
         importlib.reload(web)
     except Exception as exc:
         click.echo(red("  Failed to start web UI. Ensure the package is installed and importable."))
@@ -2303,7 +2303,7 @@ def tokens(session_id, limit):
 @click.option("--fail-fast", is_flag=True, help="Stop at first failure.")
 def check(as_json, fail_fast):
     """Run a full self-diagnostic. The system checks itself."""
-    from cda.selfcheck import CHECKS
+    from cda.kernel.selfcheck import CHECKS
 
     if not as_json:
         click.echo()

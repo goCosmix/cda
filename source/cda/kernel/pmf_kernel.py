@@ -8,7 +8,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOCAL_DIR = ROOT_DIR / "local"
 PACKAGE_DIR = Path(__file__).resolve().parent
 RUNTIME_FILE = LOCAL_DIR / "pmf" / "runtime.json"
@@ -52,13 +52,13 @@ class ServiceSpec:
                 sys.executable,
                 "-c",
                 (
-                    "import cda.web as w; "
+                    "import cda.ui.web as w; "
                     f"w.start_server(host={json.dumps(host)}, port={port})"
                 ),
             ]
 
         if self.service_id == "watcher":
-            return [sys.executable, str(PACKAGE_DIR / "watcher.py")]
+            return [sys.executable, str(PACKAGE_DIR.parent / "pipeline" / "watcher.py")]
 
         if self.command is not None:
             return list(self.command)
@@ -92,7 +92,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Full Sync",
         service_type="task",
         description="Full ingest and rebuild pipeline for Ark data.",
-        command=[sys.executable, str(PACKAGE_DIR / "ingest.py")],
+        command=[sys.executable, str(PACKAGE_DIR.parent / "pipeline" / "ingest.py")],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "sync.log",
         allowed_actions=["start", "status"],
@@ -102,7 +102,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Reconstruct",
         service_type="task",
         description="Reconstruct conversations and rebuild the full text search index.",
-        command=[sys.executable, str(PACKAGE_DIR / "reconstruct.py")],
+        command=[sys.executable, str(PACKAGE_DIR.parent / "pipeline" / "reconstruct.py")],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "reconstruct.log",
         allowed_actions=["start", "status"],
@@ -112,7 +112,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Embed Build",
         service_type="task",
         description="Build semantic embeddings and session intelligence.",
-        command=[sys.executable, str(PACKAGE_DIR / "embed.py"), "build"],
+        command=[sys.executable, str(PACKAGE_DIR.parent / "pipeline" / "embed.py"), "build"],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "embed.log",
         allowed_actions=["start", "status"],

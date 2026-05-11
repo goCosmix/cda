@@ -10,12 +10,12 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from wsgiref.simple_server import make_server, WSGIServer
 from urllib.parse import parse_qs, urlparse, urlencode, quote, unquote
-from cda.pmf_kernel import PMFKernel, PMFKernelError
+from cda.kernel.pmf_kernel import PMFKernel, PMFKernelError
 
 # Get DB path relative to this file
 PACKAGE_DIR = Path(__file__).resolve().parent
-ARK_DIR = PACKAGE_DIR.parent
-DB_PATH = ARK_DIR / "vscode-ark.db"
+LOCAL_DIR = PACKAGE_DIR.parent.parent.parent / "local"
+DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
 kernel = PMFKernel()
 
 # ─────────────────────────────────────────────
@@ -1368,28 +1368,28 @@ def run_action_background(action_id, action_name):
     try:
         if action_name == "sync":
             result = subprocess.run(
-                ["python3", str(PACKAGE_DIR / "ingest.py")],
+                ["python3", str(PACKAGE_DIR.parent / "pipeline" / "ingest.py")],
                 capture_output=True,
                 text=True,
                 timeout=300
             )
         elif action_name == "reconstruct":
             result = subprocess.run(
-                ["python3", str(PACKAGE_DIR / "reconstruct.py")],
+                ["python3", str(PACKAGE_DIR.parent / "pipeline" / "reconstruct.py")],
                 capture_output=True,
                 text=True,
                 timeout=300
             )
         elif action_name == "embed-build":
             result = subprocess.run(
-                ["python3", str(PACKAGE_DIR / "embed.py"), "build"],
+                ["python3", str(PACKAGE_DIR.parent / "pipeline" / "embed.py"), "build"],
                 capture_output=True,
                 text=True,
                 timeout=600
             )
         elif action_name == "watch-start":
             result = subprocess.run(
-                ["python3", str(PACKAGE_DIR / "watcher.py"), "start"],
+                ["python3", str(PACKAGE_DIR.parent / "pipeline" / "watcher.py"), "start"],
                 capture_output=True,
                 text=True,
                 timeout=30

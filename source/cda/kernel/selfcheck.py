@@ -29,8 +29,8 @@ from pathlib import Path
 
 # ── paths the system knows about itself ─────────────────────────────────────
 PACKAGE_DIR  = Path(__file__).resolve().parent
-SOURCE_DIR   = PACKAGE_DIR.parent          # source/  — tracked repo root
-PROJECT_DIR  = PACKAGE_DIR.parent.parent   # repo root — where layers live
+SOURCE_DIR   = PACKAGE_DIR.parent.parent          # source/  — tracked repo root
+PROJECT_DIR  = PACKAGE_DIR.parent.parent.parent   # repo root — where layers live
 LOCAL_DIR    = PROJECT_DIR / "local"
 DB_PATH      = LOCAL_DIR / "data" / "vscode-ark.db"
 PID_FILE     = LOCAL_DIR / "run" / "watcher.pid"

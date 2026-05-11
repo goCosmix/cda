@@ -33,7 +33,7 @@ HOME        = Path.home()
 VSCODE_DATA_DIR = Path(os.environ.get("VSCODE_DATA_DIR", HOME / "Library/Application Support/Code/User"))
 VS_STORAGE  = VSCODE_DATA_DIR / "workspaceStorage"
 GLOBAL_MEM  = VSCODE_DATA_DIR / "globalStorage/github.copilot-chat/memory-tool/memories"
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 LOCAL_DIR = ROOT_DIR / "local"
 DB_PATH  = LOCAL_DIR / "data" / "vscode-ark.db"
 

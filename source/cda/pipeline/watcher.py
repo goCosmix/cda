@@ -30,7 +30,7 @@ except ImportError:
     print("ERROR: watchfiles not installed. Run: pip install watchfiles")
     sys.exit(1)
 
-ROOT_DIR  = Path(__file__).resolve().parent.parent.parent
+ROOT_DIR  = Path(__file__).resolve().parent.parent.parent.parent
 LOCAL_DIR = ROOT_DIR / "local"
 DB_PATH   = LOCAL_DIR / "data" / "vscode-ark.db"
 PID_FILE  = LOCAL_DIR / "run" / "watcher.pid"
@@ -498,7 +498,7 @@ def handle_state_vscdb(conn, ws_id, path: Path):
 # Exchange reconstruction (incremental)
 # ─────────────────────────────────────────────
 
-from cda.reconstruct import EXCHANGES_SCHEMA, reconstruct_session as _reconstruct_session
+from cda.pipeline.reconstruct import EXCHANGES_SCHEMA, reconstruct_session as _reconstruct_session
 
 def rebuild_exchanges(conn, session_id: str, ws_id: str):
     """Delete and rebuild exchanges + FTS for one session."""

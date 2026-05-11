@@ -33,8 +33,9 @@ Edit rounds: len(checkpoints) - 1  (first is always "Initial State")
 import sqlite3, gzip, json, re
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = ROOT_DIR / "vscode-ark.db"
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
+LOCAL_DIR = ROOT_DIR / "local"
+DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS edit_sessions (

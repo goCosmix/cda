@@ -15,8 +15,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = ROOT_DIR / "vscode-ark.db"
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
+LOCAL_DIR = ROOT_DIR / "local"
+DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 MAX_EMBED_TEXT = 1400
 

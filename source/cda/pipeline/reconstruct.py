@@ -15,8 +15,9 @@ Schema added: exchanges
 import sqlite3, json, gzip, time, re
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = ROOT_DIR / "vscode-ark.db"
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
+LOCAL_DIR = ROOT_DIR / "local"
+DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
 NOW_MS  = int(time.time() * 1000)
 
 EXCHANGES_SCHEMA = """

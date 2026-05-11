@@ -54,7 +54,7 @@ test = [
 ]
 
 [project.scripts]
-cda = "cda.cli:main"
+cda = "cda.ui.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/goCosmix/vscode-ark"

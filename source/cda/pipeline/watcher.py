@@ -23,6 +23,7 @@ import os, sys, json, gzip, hashlib, sqlite3, time, threading, signal
 import logging
 from pathlib import Path
 from collections import defaultdict
+from typing import Optional
 
 try:
     from watchfiles import watch, Change
@@ -240,7 +241,7 @@ def cleanup_old_queue_files():
             completed_file.unlink()  # Remove corrupted files
 
 
-def _insert_vfs(conn, path: str, ws_id: str, session_id: str, source_type: str, content: bytes | None, filename: str):
+def _insert_vfs(conn, path: str, ws_id: str, session_id: str, source_type: str, content: "Optional[bytes]", filename: str):
     """Insert VFS blob - used by queue replay."""
     if content is None:
         try:

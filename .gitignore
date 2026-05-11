@@ -41,7 +41,10 @@ ENV/
 
 # Project layers (host-only runtime state)
 local/
-control/
+control/data/
+control/audit/
+control/cache/
+control/scan/
 
 # Database files
 *.db

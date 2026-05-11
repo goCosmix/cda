@@ -1,15 +1,5 @@
-# Runtime dependencies
+# Runtime dependencies — authoritative list is in pyproject.toml
 watchfiles>=0.20
 click>=8.0
 sentence-transformers>=2.2.2
 numpy>=1.26
-
-# Development dependencies
-pytest>=7.0
-pytest-cov
-black
-isort
-flake8
-mypy
-build
-twine

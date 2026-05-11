@@ -22,15 +22,15 @@ test:
 	pytest tests/ -v
 
 test-cov:
-	pytest tests/ -v --cov=vscode_ark --cov-report=html --cov-report=term
+	pytest tests/ -v --cov=cda --cov-report=html --cov-report=term
 
 lint:
-	flake8 vscode_ark tests
-	mypy vscode_ark
+	flake8 cda tests
+	mypy cda
 
 format:
-	black vscode_ark tests
-	isort vscode_ark tests
+	black cda tests
+	isort cda tests
 
 clean:
 	rm -rf build/
@@ -40,7 +40,7 @@ clean:
 	rm -rf htmlcov/
 	rm -rf .pytest_cache/
 	rm -rf __pycache__/
-	rm -rf vscode_ark/__pycache__/
+	rm -rf cda/__pycache__/
 	rm -rf tests/__pycache__/
 
 build:
@@ -50,9 +50,9 @@ publish: clean build
 	twine upload dist/*
 
 release: clean
-	python release.py --sync --build
-	git add VERSION setup.py pyproject.toml vscode_ark/__init__.py CHANGELOG.md MANIFEST.in release.py
+	python bin/release.py --sync --build
+	git add VERSION setup.py pyproject.toml cda/__init__.py CHANGELOG.md MANIFEST.in bin/release.py
 	git commit -m "Release version $(shell cat VERSION)"
-	python release.py --tag
+	python bin/release.py --tag
 	git push origin HEAD --tags
-	python release.py --publish
+	python bin/release.py --publish

@@ -25,7 +25,7 @@ class PyPIManager:
         if token := os.getenv("PYPI_TOKEN"):
             return token
 
-        config_file = Path.home() / ".vscode-ark" / "pypi.json"
+        config_file = Path.home() / ".cda" / "pypi.json"
         if config_file.exists():
             try:
                 config = json.loads(config_file.read_text())
@@ -38,7 +38,7 @@ class PyPIManager:
     def save_token(self, token: str, remember: bool = False) -> None:
         """Save PyPI token for future use."""
         if remember:
-            config_dir = Path.home() / ".vscode-ark"
+            config_dir = Path.home() / ".cda"
             config_dir.mkdir(parents=True, exist_ok=True)
             config_file = config_dir / "pypi.json"
             config_file.write_text(json.dumps({"token": token}, indent=2))
@@ -112,6 +112,6 @@ def setup_pypi_token() -> None:
     manager.save_token(token, remember=remember)
 
     if remember:
-        print("✓ Token saved to ~/.vscode-ark/pypi.json")
+        print("✓ Token saved to ~/.cda/pypi.json")
     else:
         print("✓ Token configured for this session")

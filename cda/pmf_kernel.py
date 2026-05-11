@@ -9,13 +9,16 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-RUNTIME_FILE = ROOT_DIR / "pmf_runtime.json"
-LOG_DIR = ROOT_DIR / "pmf_logs"
-WATCHER_PID_FILE = ROOT_DIR / "watcher.pid"
-UI_PID_FILE = ROOT_DIR / "ui.pid"
+DATA_DIR = ROOT_DIR / "data"
+PACKAGE_DIR = Path(__file__).resolve().parent
+RUNTIME_FILE = DATA_DIR / "pmf_runtime.json"
+LOG_DIR = DATA_DIR / "pmf_logs"
+WATCHER_PID_FILE = DATA_DIR / "watcher.pid"
+UI_PID_FILE = DATA_DIR / "ui.pid"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 10001
 
+DATA_DIR.mkdir(exist_ok=True)
 LOG_DIR.mkdir(exist_ok=True)
 
 
@@ -54,7 +57,7 @@ class ServiceSpec:
             ]
 
         if self.service_id == "watcher":
-            return [sys.executable, str(ROOT_DIR / "cda" / "watcher.py")]
+            return [sys.executable, str(PACKAGE_DIR / "watcher.py")]
 
         if self.command is not None:
             return list(self.command)
@@ -70,7 +73,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         description="Live VS Code data watcher and incremental ingest process.",
         cwd=ROOT_DIR,
         pid_file=WATCHER_PID_FILE,
-        log_file=ROOT_DIR / "watcher.log",
+        log_file=DATA_DIR / "watcher.log",
         allowed_actions=["start", "stop", "restart", "status"],
     ),
     "ui": ServiceSpec(
@@ -80,7 +83,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         description="Local web dashboard for Ark runtime and session analytics.",
         cwd=ROOT_DIR,
         pid_file=UI_PID_FILE,
-        log_file=ROOT_DIR / "ui.log",
+        log_file=DATA_DIR / "ui.log",
         allowed_actions=["start", "stop", "restart", "status"],
     ),
     "sync": ServiceSpec(
@@ -88,7 +91,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Full Sync",
         service_type="task",
         description="Full ingest and rebuild pipeline for Ark data.",
-        command=[sys.executable, str(ROOT_DIR / "cda" / "ingest.py")],
+        command=[sys.executable, str(PACKAGE_DIR / "ingest.py")],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "sync.log",
         allowed_actions=["start", "status"],
@@ -98,7 +101,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Reconstruct",
         service_type="task",
         description="Reconstruct conversations and rebuild the full text search index.",
-        command=[sys.executable, str(ROOT_DIR / "cda" / "reconstruct.py")],
+        command=[sys.executable, str(PACKAGE_DIR / "reconstruct.py")],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "reconstruct.log",
         allowed_actions=["start", "status"],
@@ -108,7 +111,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Embed Build",
         service_type="task",
         description="Build semantic embeddings and session intelligence.",
-        command=[sys.executable, str(ROOT_DIR / "cda" / "embed.py"), "build"],
+        command=[sys.executable, str(PACKAGE_DIR / "embed.py"), "build"],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "embed.log",
         allowed_actions=["start", "status"],

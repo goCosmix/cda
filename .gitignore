@@ -41,11 +41,7 @@ ENV/
 
 # Project layers (host-only runtime state)
 local/
-control/data/
-control/audit/
-control/cache/
-control/scan/
-# control/scripts/ and control/docs/ are tracked
+control/
 
 # Database files
 *.db

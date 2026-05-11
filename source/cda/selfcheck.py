@@ -29,7 +29,7 @@ from pathlib import Path
 
 # ── paths the system knows about itself ─────────────────────────────────────
 PACKAGE_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = PACKAGE_DIR.parent
+PROJECT_DIR = PACKAGE_DIR.parent.parent
 DATA_DIR    = PROJECT_DIR / "data"
 DB_PATH     = DATA_DIR / "vscode-ark.db"
 PID_FILE    = PROJECT_DIR / "watcher.pid"
@@ -91,7 +91,7 @@ def check_install_path():
         result = subprocess.run(
             [sys.executable, "-c",
              "import cda, pathlib; "
-             "print(pathlib.Path(cda.__file__).parent.parent.resolve())"],
+             "print(pathlib.Path(cda.__file__).parent.parent.parent.resolve())"],
             capture_output=True, text=True,
         )
         if result.returncode != 0:

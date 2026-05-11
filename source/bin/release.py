@@ -4,11 +4,11 @@ import re
 import subprocess
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 VERSION_FILE = ROOT / "VERSION"
 PYPROJECT_FILE = ROOT / "pyproject.toml"
 SETUP_FILE = ROOT / "setup.py"
-INIT_FILE = ROOT / "cda" / "__init__.py"
+INIT_FILE = ROOT / "source" / "cda" / "__init__.py"
 
 VERSION_PATTERN = r"\d+\.\d+\.\d+"
 

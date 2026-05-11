@@ -30,7 +30,7 @@ except ImportError:
     print("ERROR: watchfiles not installed. Run: pip install watchfiles")
     sys.exit(1)
 
-ROOT_DIR  = Path(__file__).resolve().parent.parent
+ROOT_DIR  = Path(__file__).resolve().parent.parent.parent
 DATA_DIR  = ROOT_DIR / "data"
 DB_PATH   = DATA_DIR / "vscode-ark.db"
 PID_FILE  = DATA_DIR / "watcher.pid"

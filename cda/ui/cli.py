@@ -51,7 +51,14 @@ Commands:
   cda recommend <session>    Show session recommendations
 """
 
-import os, sys, json, gzip, sqlite3, subprocess, signal, textwrap, time, datetime
+import os
+import sys
+import json
+import gzip
+import sqlite3
+import subprocess
+import textwrap
+import datetime
 from pathlib import Path
 from cda.pipeline.reconstruct import decompress_vfs
 from cda.kernel.pmf_kernel import PMFKernel, PMFKernelError
@@ -91,6 +98,7 @@ class C:
     CYAN   = "\033[96m"
     WHITE  = "\033[97m"
 
+
 def bold(s):    return f"{C.BOLD}{s}{C.RESET}"
 def dim(s):     return f"{C.DIM}{s}{C.RESET}"
 def green(s):   return f"{C.GREEN}{s}{C.RESET}"
@@ -100,7 +108,9 @@ def cyan(s):    return f"{C.CYAN}{s}{C.RESET}"
 def magenta(s): return f"{C.MAGENTA}{s}{C.RESET}"
 def blue(s):    return f"{C.BLUE}{s}{C.RESET}"
 
+
 def hr(char="─", width=80): return dim(char * width)
+
 
 def fmt_ts(iso_or_ms):
     """Format ISO timestamp or ms-since-epoch to readable local time."""
@@ -116,15 +126,18 @@ def fmt_ts(iso_or_ms):
     except Exception:
         return str(iso_or_ms)
 
+
 def fmt_size(n):
     if n is None: return "—"
     if n < 1024: return f"{n}B"
     if n < 1024**2: return f"{n//1024}KB"
     return f"{n/1024/1024:.1f}MB"
 
+
 def truncate(s, n=80):
     s = (s or "").replace("\n", " ").strip()
     return s[:n] + "…" if len(s) > n else s
+
 
 def table(rows, headers, widths=None):
     """Print a simple aligned table."""
@@ -159,6 +172,7 @@ def db():
     conn.execute("PRAGMA mmap_size=268435456")
     conn.execute("PRAGMA temp_store=MEMORY")
     return conn
+
 
 def short_id(s, n=8):
     return (s or "")[:n]
@@ -214,19 +228,20 @@ class CDAGroup(click.Group):
         click.echo(f"  Runtime  : {DB_PATH}")
         click.echo("  Status   : active\n")
         click.echo("Usage:")
-        
+
         commands = []
         for cmd in self.list_commands(ctx):
             c = self.get_command(ctx, cmd)
             if c and not c.hidden:
                 help_str = c.get_short_help_str(80) or ""
                 commands.append((cmd, help_str))
-        
+
         if commands:
             max_len = max(len(c[0]) for c in commands)
             for cmd, help_str in commands:
                 click.echo(f"  cda {cmd.ljust(max_len)}    {help_str}")
         click.echo("")
+
 
 @click.group(cls=CDAGroup, invoke_without_command=True)
 @click.pass_context
@@ -694,6 +709,7 @@ def watch():
     """Manage the live watcher daemon."""
     pass
 
+
 @watch.command("start")
 def watch_start():
     """Start the live sync watcher daemon."""
@@ -703,14 +719,16 @@ def watch_start():
     except PMFKernelError as exc:
         click.echo(red(f"  {exc}"))
 
+
 @watch.command("stop")
 def watch_stop():
     """Stop the live sync watcher daemon."""
     try:
-        result = kernel.stop_service("watcher")
-        click.echo(green(f"  Watcher stopped"))
+        kernel.stop_service("watcher")
+        click.echo(green("  Watcher stopped"))
     except PMFKernelError as exc:
         click.echo(yellow(f"  {exc}"))
+
 
 @watch.command("restart")
 def watch_restart():
@@ -786,6 +804,7 @@ def sync():
     log_event("sync.complete", detail=f"sessions={counts.get('sessions')}, exchanges={counts.get('exchanges')}")
     click.echo(green("  Done"))
 
+
 @cli.command()
 def reconstruct():
     """Re-run session reconstruction and FTS rebuild only."""
@@ -819,6 +838,7 @@ def workspaces():
         )
         click.echo(f"             {dim(truncate(r['uri'] or '', 70))}")
     click.echo()
+
 
 @cli.command()
 @click.argument("workspace_id")
@@ -1294,8 +1314,6 @@ def edits(session, file_query, changed_only, limit):
     click.echo()
 
 
-
-
 # ─────────────────────────────────────────────
 # MEMORY
 # ─────────────────────────────────────────────
@@ -1354,6 +1372,7 @@ def vfs():
     """VFS blob storage operations."""
     pass
 
+
 @vfs.command("ls")
 @click.argument("session_id")
 def vfs_ls(session_id):
@@ -1377,6 +1396,7 @@ def vfs_ls(session_id):
             f"{dim(r['sha256'])}"
         )
     click.echo()
+
 
 @vfs.command("cat")
 @click.argument("vfs_id", type=int)
@@ -1411,6 +1431,7 @@ def vfs_cat(vfs_id, raw, lines):
         text = "\n".join(output_lines)
     click.echo(text)
 
+
 @vfs.command("types")
 def vfs_types():
     """Summary of VFS blob types and sizes."""
@@ -1443,6 +1464,7 @@ def policy():
     """Manage data access policies."""
     pass
 
+
 @policy.command("allow")
 @click.argument("pattern")
 def policy_allow(pattern):
@@ -1456,6 +1478,7 @@ def policy_allow(pattern):
     except Exception as e:
         click.echo(red(f"  Error: {e}"))
 
+
 @policy.command("deny")
 @click.argument("pattern")
 def policy_deny(pattern):
@@ -1467,6 +1490,7 @@ def policy_deny(pattern):
         click.echo(green(f"  Added deny pattern: {pattern}"))
     except Exception as e:
         click.echo(red(f"  Error: {e}"))
+
 
 @policy.command("list")
 def policy_list():
@@ -1490,6 +1514,7 @@ def policy_list():
     except Exception as e:
         click.echo(red(f"  Error reading policies: {e}"))
     click.echo()
+
 
 def check_policy(text):
     """Check if text passes policy filters. Returns True if allowed."""
@@ -1590,7 +1615,7 @@ def code_search(pattern, symbol, path, regex, workspace, limit):
     else:
         import re
 
-        query = "SELECT workspace_id, source_path, source_type, content_type, content, size_bytes FROM vfs WHERE source_type IN ('edit_content','edit_state','memory_workspace','memory_global')"
+        query = "SELECT workspace_id, source_path, source_type, content_type, content, size_bytes FROM vfs WHERE source_type IN ('edit_content','edit_state','memory_workspace','memory_global')"  # noqa: E501
         params = []
         if workspace:
             query += " AND workspace_id LIKE ?"
@@ -1880,6 +1905,7 @@ def compactions(session_id, full, limit):
 # ─────────────────────────────────────────────
 # BEHAVIOR REPORT
 # ─────────────────────────────────────────────
+
 
 @cli.command()
 @click.option("--limit", "-n", default=20, help="Top N sessions to show")
@@ -2428,7 +2454,7 @@ def control_runs(tail):
         duration = ""
         if started and finished:
             try:
-                from datetime import datetime, timezone
+                from datetime import datetime
                 s = datetime.fromisoformat(started)
                 f = datetime.fromisoformat(finished)
                 secs = int((f - s).total_seconds())
@@ -2555,6 +2581,7 @@ def check(as_json, fail_fast):
 def main():
     """Main entry point for the CLI."""
     cli()
+
 
 if __name__ == "__main__":
     main()

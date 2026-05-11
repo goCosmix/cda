@@ -5,12 +5,18 @@ Light-themed web UI with comprehensive CLI command access.
 All 40+ CLI commands accessible as browser UI pages instead of terminal.
 """
 
-import os, sys, json, sqlite3, threading, time, gzip, traceback, subprocess, re, socket
+import json
+import sqlite3
+import threading
+import time
+import traceback
+import subprocess
+import socket
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from wsgiref.simple_server import make_server, WSGIServer
-from urllib.parse import parse_qs, urlparse, urlencode, quote, unquote
-from cda.kernel.pmf_kernel import PMFKernel, PMFKernelError
+from urllib.parse import parse_qs
+from cda.kernel.pmf_kernel import PMFKernel
 
 # Get DB path relative to this file
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -637,19 +643,19 @@ body {
     inset: 20px;
     border-radius: 8px;
   }
-  
+
   .drawer-header {
     padding: 16px 16px 0;
   }
-  
+
   .drawer-tabs {
     padding: 12px 16px 0;
   }
-  
+
   .drawer-body {
     padding: 16px;
   }
-  
+
   .drawer-tab {
     padding: 10px 12px;
     font-size: 12px;
@@ -661,11 +667,11 @@ body {
     inset: 0;
     border-radius: 0;
   }
-  
+
   .drawer {
     backdrop-filter: none;
   }
-  
+
   .drawer-backdrop {
     display: none;
   }
@@ -921,6 +927,7 @@ body {
 # Database Helpers
 # ─────────────────────────────────────────────
 
+
 def get_db():
     """Get database connection with proper settings."""
     conn = sqlite3.connect(str(DB_PATH), timeout=10)
@@ -928,6 +935,7 @@ def get_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     return conn
+
 
 def query_rows(sql, params=()):
     """Execute SELECT and return rows as dicts."""
@@ -940,6 +948,7 @@ def query_rows(sql, params=()):
     except Exception as e:
         return {"error": str(e)}
 
+
 def query_one(sql, params=()):
     """Execute SELECT and return single row or None."""
     rows = query_rows(sql, params)
@@ -947,17 +956,20 @@ def query_one(sql, params=()):
         return rows
     return rows[0] if rows else None
 
+
 def safe_rows(rows):
     """Normalize query_rows output to an array for APIs."""
     if isinstance(rows, dict) and "error" in rows:
         return []
     return rows or []
 
+
 def safe_one(row):
     """Normalize query_one output to a dict or None."""
     if isinstance(row, dict) and "error" in row:
         return None
     return row
+
 
 def table_exists(table_name):
     """Return True if a table exists in the current database."""
@@ -967,11 +979,12 @@ def table_exists(table_name):
     except Exception:
         return False
 
+
 def execute_stmt(sql, params=()):
     """Execute INSERT/UPDATE/DELETE statement."""
     try:
         conn = get_db()
-        cursor = conn.execute(sql, params)
+        conn.execute(sql, params)
         conn.commit()
         conn.close()
         return {"ok": True}
@@ -982,6 +995,7 @@ def execute_stmt(sql, params=()):
 # Data Retrieval Functions
 # ─────────────────────────────────────────────
 
+
 def get_overview():
     """Dashboard overview stats."""
     try:
@@ -991,7 +1005,7 @@ def get_overview():
         has_alerts = table_exists('anomaly_alerts')
 
         stats = query_one(f"""
-            SELECT 
+            SELECT
                 (SELECT COUNT(*) FROM sessions) as total_sessions,
                 {("(SELECT COUNT(*) FROM exchanges)" if has_exchanges else "0")} as total_exchanges,
                 {("(SELECT AVG(heat_score) FROM session_analysis WHERE heat_score IS NOT NULL)" if has_analysis else "0")} as avg_heat,
@@ -1002,8 +1016,8 @@ def get_overview():
         """)
 
         heat_dist = safe_rows(query_rows("""
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN heat_score < 20 THEN '0-19'
                     WHEN heat_score < 40 THEN '20-39'
                     WHEN heat_score < 60 THEN '40-59'
@@ -1060,6 +1074,7 @@ def get_overview():
     except Exception as e:
         return {"error": str(e)}
 
+
 def get_sessions(limit=50, offset=0):
     """List all sessions with heat scores."""
     try:
@@ -1086,9 +1101,9 @@ def get_sessions(limit=50, offset=0):
                 ORDER BY s.created_at DESC
                 LIMIT ? OFFSET ?
             """, (limit, offset)))
-        
+
         total = safe_one(query_one("SELECT COUNT(*) as count FROM sessions"))
-        
+
         return {
             "sessions": sessions,
             "total": total["count"] if total else 0,
@@ -1097,6 +1112,7 @@ def get_sessions(limit=50, offset=0):
         }
     except Exception as e:
         return {"error": str(e)}
+
 
 def get_session_detail(session_id):
     """Get full session with all exchanges and signals."""
@@ -1177,6 +1193,7 @@ def get_session_detail(session_id):
     except Exception as e:
         return {"error": str(e)}
 
+
 def get_search_results(query, limit=50):
     """Full-text search across exchanges."""
     try:
@@ -1200,11 +1217,12 @@ def get_search_results(query, limit=50):
     except Exception as e:
         return {"error": str(e)}
 
+
 def get_workspaces():
     """List all workspaces with session counts."""
     try:
         workspaces = query_rows("""
-            SELECT DISTINCT workspace_id, 
+            SELECT DISTINCT workspace_id,
                    COUNT(*) as session_count,
                    MAX(created_at) as last_session
             FROM sessions
@@ -1215,6 +1233,7 @@ def get_workspaces():
         return {"workspaces": workspaces}
     except Exception as e:
         return {"error": str(e)}
+
 
 def get_workspace_detail(workspace_id):
     """Get all sessions for a workspace."""
@@ -1232,6 +1251,7 @@ def get_workspace_detail(workspace_id):
     except Exception as e:
         return {"error": str(e)}
 
+
 def get_memory():
     """Get all memory files."""
     try:
@@ -1243,6 +1263,7 @@ def get_memory():
         return {"memory": memory}
     except Exception as e:
         return {"error": str(e)}
+
 
 def get_tool_calls(query_str=None, limit=50):
     """Search tool calls."""
@@ -1270,6 +1291,7 @@ def get_tool_calls(query_str=None, limit=50):
     except Exception as e:
         return {"error": str(e)}
 
+
 def get_vfs(session_id):
     """List VFS files for a session."""
     try:
@@ -1283,6 +1305,7 @@ def get_vfs(session_id):
     except Exception as e:
         return {"error": str(e)}
 
+
 def get_alerts(limit=50):
     """Get anomaly alerts."""
     try:
@@ -1292,19 +1315,20 @@ def get_alerts(limit=50):
             ORDER BY created_at DESC
             LIMIT ?
         """, (limit,))
-        
+
         session_titles = {}
         for alert in alerts:
             if alert["session_id"] not in session_titles:
                 sess = query_one("SELECT title FROM sessions WHERE session_id = ?", (alert["session_id"],))
                 session_titles[alert["session_id"]] = sess["title"] if sess else "Unknown"
-        
+
         for alert in alerts:
             alert["session_title"] = session_titles.get(alert["session_id"], "Unknown")
-        
+
         return {"alerts": alerts}
     except Exception as e:
         return {"error": str(e)}
+
 
 def get_behavioral_signals(session_id=None):
     """Get behavioral signal analysis."""
@@ -1326,12 +1350,13 @@ def get_behavioral_signals(session_id=None):
     except Exception as e:
         return {"error": str(e)}
 
+
 def get_tokens(session_id=None):
     """Get token usage analysis."""
     try:
         if session_id:
             tokens = query_rows("""
-                SELECT 
+                SELECT
                     SUM(CAST(json_extract(metadata, '$.token_count') AS INTEGER)) as total_tokens,
                     COUNT(*) as exchange_count
                 FROM exchanges
@@ -1339,7 +1364,7 @@ def get_tokens(session_id=None):
             """, (session_id,))
         else:
             tokens = query_rows("""
-                SELECT 
+                SELECT
                     SUM(CAST(json_extract(metadata, '$.token_count') AS INTEGER)) as total_tokens,
                     COUNT(*) as exchange_count
                 FROM exchanges
@@ -1352,8 +1377,10 @@ def get_tokens(session_id=None):
 # Action Execution (Background Threading)
 # ─────────────────────────────────────────────
 
+
 ACTION_STATE = {}
 ACTION_LOCK = threading.Lock()
+
 
 def run_action_background(action_id, action_name):
     """Execute pipeline action in background thread."""
@@ -1364,7 +1391,7 @@ def run_action_background(action_id, action_name):
             "started_at": datetime.now().isoformat(),
             "output": ""
         }
-    
+
     try:
         if action_name == "sync":
             result = subprocess.run(
@@ -1396,7 +1423,7 @@ def run_action_background(action_id, action_name):
             )
         else:
             result = None
-        
+
         with ACTION_LOCK:
             if result:
                 ACTION_STATE[action_id]["status"] = "completed" if result.returncode == 0 else "failed"
@@ -1412,6 +1439,7 @@ def run_action_background(action_id, action_name):
 # ─────────────────────────────────────────────
 # WSGI Application
 # ─────────────────────────────────────────────
+
 
 INDEX_HTML = """
 <!DOCTYPE html>
@@ -1431,44 +1459,44 @@ INDEX_HTML = """
                     Intelligence & Analysis
                 </div>
             </div>
-            
+
             <div class="nav-group">
                 <div class="nav-group-title">Core</div>
-                <div class="nav-item active" data-page="dashboard"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="8" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="14" width="7" height="6" rx="1"/></svg>Dashboard</div>
-                <div class="nav-item" data-page="sessions"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>Sessions</div>
-                <div class="nav-item" data-page="search"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search</div>
+                <div class="nav-item active" data-page="dashboard"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="8" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="14" width="7" height="6" rx="1"/></svg>Dashboard</div>  # noqa: E501
+                <div class="nav-item" data-page="sessions"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>Sessions</div>  # noqa: E501
+                <div class="nav-item" data-page="search"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search</div>  # noqa: E501
             </div>
-            
+
             <div class="nav-group">
                 <div class="nav-group-title">Analysis</div>
-                <div class="nav-item" data-page="heat"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 14.5a4 4 0 0 1 8 0c0 2.2-2.5 5.5-4 7.5-1.5-2-4-5.3-4-7.5z"/><path d="M12 2.5c0 4.5-2 7.5-2 10.5a4 4 0 0 0 4 4c1.5 0 2-1 2-1s2 1 2-2c0-5-5-8-6-11.5z"/></svg>Heat Analysis</div>
-                <div class="nav-item" data-page="keywords"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41 13.41 20.59a2 2 0 0 1-2.83 0L3.59 13.6a2 2 0 0 1 0-2.83L10.77 3.59a2 2 0 0 1 2.83 0l7.17 7.17a2 2 0 0 1 0 2.83z"/><path d="M7 7h.01"/></svg>Keywords</div>
-                <div class="nav-item" data-page="signals"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.5 16.5a6 6 0 0 1 7 0"/><path d="M12 20a2 2 0 0 1 2-2 2 2 0 0 1 2 2"/></svg>Signals</div>
-                <div class="nav-item" data-page="behavior"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a4 4 0 0 0 4-4v-1.5a3.5 3.5 0 0 0-3.5-3.5H11.5A3.5 3.5 0 0 0 8 16.5V18a4 4 0 0 0 4 4z"/><path d="M8 2c-1.11 0-2 .9-2 2v3h12V4c0-1.1-.89-2-2-2H8z"/></svg>Behavior</div>
+                <div class="nav-item" data-page="heat"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 14.5a4 4 0 0 1 8 0c0 2.2-2.5 5.5-4 7.5-1.5-2-4-5.3-4-7.5z"/><path d="M12 2.5c0 4.5-2 7.5-2 10.5a4 4 0 0 0 4 4c1.5 0 2-1 2-1s2 1 2-2c0-5-5-8-6-11.5z"/></svg>Heat Analysis</div>  # noqa: E501
+                <div class="nav-item" data-page="keywords"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41 13.41 20.59a2 2 0 0 1-2.83 0L3.59 13.6a2 2 0 0 1 0-2.83L10.77 3.59a2 2 0 0 1 2.83 0l7.17 7.17a2 2 0 0 1 0 2.83z"/><path d="M7 7h.01"/></svg>Keywords</div>  # noqa: E501
+                <div class="nav-item" data-page="signals"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.5 16.5a6 6 0 0 1 7 0"/><path d="M12 20a2 2 0 0 1 2-2 2 2 0 0 1 2 2"/></svg>Signals</div>  # noqa: E501
+                <div class="nav-item" data-page="behavior"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a4 4 0 0 0 4-4v-1.5a3.5 3.5 0 0 0-3.5-3.5H11.5A3.5 3.5 0 0 0 8 16.5V18a4 4 0 0 0 4 4z"/><path d="M8 2c-1.11 0-2 .9-2 2v3h12V4c0-1.1-.89-2-2-2H8z"/></svg>Behavior</div>  # noqa: E501
             </div>
-            
+
             <div class="nav-group">
                 <div class="nav-group-title">Navigation</div>
-                <div class="nav-item" data-page="workspaces"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></svg>Workspaces</div>
-                <div class="nav-item" data-page="tools"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 10.3 13.4 11.6 14.1 12.3a2 2 0 0 1 0 2.83l-5.7 5.7a2 2 0 0 1-2.83 0L3.4 17.7a2 2 0 0 1 0-2.83l5.7-5.7a2 2 0 0 1 2.83 0l.7.7 1.3-1.3"/><path d="M9 14.6l-2-2"/></svg>Tool Calls</div>
-                <div class="nav-item" data-page="memory"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Memory</div>
-                <div class="nav-item" data-page="tokens"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12h10"/><path d="M8 8h8"/><path d="M8 16h8"/><path d="M12 4v16"/></svg>Tokens</div>
+                <div class="nav-item" data-page="workspaces"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></svg>Workspaces</div>  # noqa: E501
+                <div class="nav-item" data-page="tools"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 10.3 13.4 11.6 14.1 12.3a2 2 0 0 1 0 2.83l-5.7 5.7a2 2 0 0 1-2.83 0L3.4 17.7a2 2 0 0 1 0-2.83l5.7-5.7a2 2 0 0 1 2.83 0l.7.7 1.3-1.3"/><path d="M9 14.6l-2-2"/></svg>Tool Calls</div>  # noqa: E501
+                <div class="nav-item" data-page="memory"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Memory</div>  # noqa: E501
+                <div class="nav-item" data-page="tokens"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12h10"/><path d="M8 8h8"/><path d="M8 16h8"/><path d="M12 4v16"/></svg>Tokens</div>  # noqa: E501
             </div>
-            
+
             <div class="nav-group">
                 <div class="nav-group-title">Intelligence</div>
-                <div class="nav-item" data-page="alerts"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Alerts</div>
-                <div class="nav-item" data-page="recommendations"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M9 9a3 3 0 0 1 6 0c0 1.38-.56 2.63-1.5 3.5A3 3 0 0 0 12 17a3 3 0 0 0-1.5-4.5C9.56 11.63 9 10.38 9 9z"/></svg>Recommendations</div>
-                <div class="nav-item" data-page="topics"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Topics</div>
+                <div class="nav-item" data-page="alerts"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Alerts</div>  # noqa: E501
+                <div class="nav-item" data-page="recommendations"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M9 9a3 3 0 0 1 6 0c0 1.38-.56 2.63-1.5 3.5A3 3 0 0 0 12 17a3 3 0 0 0-1.5-4.5C9.56 11.63 9 10.38 9 9z"/></svg>Recommendations</div>  # noqa: E501
+                <div class="nav-item" data-page="topics"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Topics</div>  # noqa: E501
             </div>
-            
+
             <div class="nav-group">
                 <div class="nav-group-title">System</div>
-                <div class="nav-item" data-page="pipeline"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v6h12"/></svg>Pipeline</div>
-                <div class="nav-item" data-page="query"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9 4-4 4 4"/><path d="m8 15 4-4 4 4"/></svg>Raw Query</div>
+                <div class="nav-item" data-page="pipeline"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v6h12"/></svg>Pipeline</div>  # noqa: E501
+                <div class="nav-item" data-page="query"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9 4-4 4 4"/><path d="m8 15 4-4 4 4"/></svg>Raw Query</div>  # noqa: E501
             </div>
         </div>
-        
+
         <div class="content" id="main-content">
             <!-- Pages rendered here -->
         </div>
@@ -1499,11 +1527,12 @@ INDEX_HTML = """
             </div>
         </div>
     </div>
-    
+
     <script>{{APP_JS}}</script>
 </body>
 </html>
 """
+
 
 def render_page(page_name):
     """Render page based on name."""
@@ -1542,6 +1571,7 @@ def render_page(page_name):
     else:
         return render_dashboard()
 
+
 def render_dashboard():
     """Dashboard page."""
     return """
@@ -1555,6 +1585,7 @@ def render_dashboard():
     </div>
     """
 
+
 def render_sessions():
     """Sessions list page."""
     return """
@@ -1567,6 +1598,7 @@ def render_sessions():
         Loading sessions...
     </div>
     """
+
 
 def render_search():
     """Full-text search page."""
@@ -1588,6 +1620,7 @@ def render_search():
     </div>
     """
 
+
 def render_heat():
     """Heat analysis page."""
     return """
@@ -1600,6 +1633,7 @@ def render_heat():
         Loading heat analysis...
     </div>
     """
+
 
 def render_keywords():
     """Keywords page."""
@@ -1614,6 +1648,7 @@ def render_keywords():
     </div>
     """
 
+
 def render_signals():
     """Behavioral signals page."""
     return """
@@ -1625,6 +1660,7 @@ def render_signals():
         <p>Behavioral signal analysis coming soon.</p>
     </div>
     """
+
 
 def render_behavior():
     """Behavior intelligence page."""
@@ -1638,6 +1674,7 @@ def render_behavior():
     </div>
     """
 
+
 def render_workspaces():
     """Workspaces page."""
     return """
@@ -1650,6 +1687,7 @@ def render_workspaces():
         Loading workspaces...
     </div>
     """
+
 
 def render_tools():
     """Tool calls page."""
@@ -1671,6 +1709,7 @@ def render_tools():
     </div>
     """
 
+
 def render_memory():
     """Memory files page."""
     return """
@@ -1684,6 +1723,7 @@ def render_memory():
     </div>
     """
 
+
 def render_tokens():
     """Token usage page."""
     return """
@@ -1695,6 +1735,7 @@ def render_tokens():
         <p>Token usage analysis coming soon.</p>
     </div>
     """
+
 
 def render_alerts():
     """Alerts page."""
@@ -1709,6 +1750,7 @@ def render_alerts():
     </div>
     """
 
+
 def render_recommendations():
     """Recommendations page."""
     return """
@@ -1721,6 +1763,7 @@ def render_recommendations():
     </div>
     """
 
+
 def render_topics():
     """Topics page."""
     return """
@@ -1732,6 +1775,7 @@ def render_topics():
         <p>Topic analysis coming soon.</p>
     </div>
     """
+
 
 def render_pipeline():
     """Pipeline management page."""
@@ -1765,6 +1809,7 @@ def render_pipeline():
     </div>
     """
 
+
 def render_query():
     """Raw SQL query page."""
     return """
@@ -1786,6 +1831,7 @@ def render_query():
         </div>
     </div>
     """
+
 
 PAGE_TEMPLATES = {
     'dashboard': json.dumps(render_dashboard()),
@@ -1827,14 +1873,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function showPage(page) {
     if (!PAGE_REGISTRY[page]) page = 'dashboard';
-    
+
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.querySelector(`[data-page="${page}"]`).classList.add('active');
-    
+
     const renderer = PAGE_REGISTRY[page];
     document.getElementById('main-content').innerHTML = renderer();
     initializePage(page);
-    
+
     window.scrollTo(0, 0);
 }
 
@@ -2026,7 +2072,7 @@ function openSessionDrawer(sessionId) {
         window.currentSessionDetail = data;
 
         titleEl.textContent = session.title || `Session ${session.session_id || sessionId}`;
-        subtitleEl.textContent = `Workspace ${session.workspace_id || '—'} · ${session.created_at ? new Date(session.created_at).toLocaleString() : 'Unknown date'}`;
+        subtitleEl.textContent = `Workspace ${session.workspace_id || '—'} · ${session.created_at ? new Date(session.created_at).toLocaleString() : 'Unknown date'}`;  # noqa: E501
 
         body.innerHTML = renderDrawerTabContent('overview', window.currentSessionDetail);
     }).catch(err => {
@@ -2069,7 +2115,7 @@ function renderDrawerTabContent(tab, data) {
                     ['Requests', session.request_count || '—'],
                     ['State', session.response_state || '—'],
                     ['Location', session.initial_location || '—'],
-                    ['Heat Score', `<span style="color: ${heatScore !== 'N/A' && heatScore >= 50 ? 'var(--danger)' : 'var(--accent)'};">${heatScore}</span>`],
+                    ['Heat Score', `<span style="color: ${heatScore !== 'N/A' && heatScore >= 50 ? 'var(--danger)' : 'var(--accent)'};">${heatScore}</span>`],  # noqa: E501
                     ['Created At', session.created_at ? new Date(session.created_at).toLocaleString() : 'Unknown']
                 ].map(([label, value]) => `
                     <div class="data-row">
@@ -2083,7 +2129,7 @@ function renderDrawerTabContent(tab, data) {
 
     const sanitize = text => String(text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const sessionSummary = sanitize(session.summary || analysis.summary || '');
-    const turnPoint = analysis.turning_point_text ? sanitize(analysis.turning_point_text.substring(0, 300)) + (analysis.turning_point_text.length > 300 ? '…' : '') : '';
+    const turnPoint = analysis.turning_point_text ? sanitize(analysis.turning_point_text.substring(0, 300)) + (analysis.turning_point_text.length > 300 ? '…' : '') : '';  # noqa: E501
 
     if (tab === 'overview') {
         const chatCount = exchanges.length;
@@ -2197,7 +2243,7 @@ function renderDrawerTabContent(tab, data) {
             }
         });
         const allToolCalls = toolCalls.length ? toolCalls : embeddedCalls;
-        const toolsHtml = allToolCalls.length ? `<table class="table"><thead><tr><th>#</th><th>Tool</th><th>Exchange</th><th>When</th></tr></thead><tbody>${allToolCalls.map((call, i) => `<tr><td>${i + 1}</td><td>${call.tool_name || call.name || 'Tool'}</td><td>${call.exchange_index || ''}</td><td>${call.created_at ? new Date(call.created_at).toLocaleString() : ''}</td></tr><tr><td colspan="4"><div class="code-block" style="margin: 0; padding: 12px;">${(call.arguments_json || call.arguments || call.args || 'No arguments').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No tool calls recorded for this session.</div>';
+        const toolsHtml = allToolCalls.length ? `<table class="table"><thead><tr><th>#</th><th>Tool</th><th>Exchange</th><th>When</th></tr></thead><tbody>${allToolCalls.map((call, i) => `<tr><td>${i + 1}</td><td>${call.tool_name || call.name || 'Tool'}</td><td>${call.exchange_index || ''}</td><td>${call.created_at ? new Date(call.created_at).toLocaleString() : ''}</td></tr><tr><td colspan="4"><div class="code-block" style="margin: 0; padding: 12px;">${(call.arguments_json || call.arguments || call.args || 'No arguments').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No tool calls recorded for this session.</div>';  # noqa: E501
         return `
             ${metadataSection}
             <div class="drawer-section">
@@ -2221,7 +2267,7 @@ function renderDrawerTabContent(tab, data) {
                 </table>
             </div>
         ` : '';
-        const signalsHtml = signals.length ? `<table class="table"><thead><tr><th>#</th><th>Signal</th><th>Created</th><th>Details</th></tr></thead><tbody>${signals.map((s, i) => `<tr><td>${i + 1}</td><td>${s.signal_type || s.matched_keyword || 'Signal'}</td><td>${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</td><td>${(s.signal_text || s.user_message || s.matched_keyword || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No exchange signals available.</div>';
+        const signalsHtml = signals.length ? `<table class="table"><thead><tr><th>#</th><th>Signal</th><th>Created</th><th>Details</th></tr></thead><tbody>${signals.map((s, i) => `<tr><td>${i + 1}</td><td>${s.signal_type || s.matched_keyword || 'Signal'}</td><td>${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</td><td>${(s.signal_text || s.user_message || s.matched_keyword || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No exchange signals available.</div>';  # noqa: E501
         return `
             ${metadataSection}
             ${summaryHtml}
@@ -2233,7 +2279,7 @@ function renderDrawerTabContent(tab, data) {
     }
 
     if (tab === 'files') {
-        const fileHtml = vfsEntries.length ? `<table class="table"><thead><tr><th>#</th><th>File</th><th>Type</th><th>Size</th><th>Path</th></tr></thead><tbody>${vfsEntries.map((file, i) => `<tr><td>${i + 1}</td><td>${file.filename || file.source_path || file.source_type}</td><td>${file.content_type || 'unknown'}</td><td>${file.size_bytes ? (file.size_bytes / 1024).toFixed(2) + ' KB' : 'unknown'}</td><td class="truncate">${file.source_path || ''}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No session files found.</div>';
+        const fileHtml = vfsEntries.length ? `<table class="table"><thead><tr><th>#</th><th>File</th><th>Type</th><th>Size</th><th>Path</th></tr></thead><tbody>${vfsEntries.map((file, i) => `<tr><td>${i + 1}</td><td>${file.filename || file.source_path || file.source_type}</td><td>${file.content_type || 'unknown'}</td><td>${file.size_bytes ? (file.size_bytes / 1024).toFixed(2) + ' KB' : 'unknown'}</td><td class="truncate">${file.source_path || ''}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No session files found.</div>';  # noqa: E501
         return `
             ${metadataSection}
             <div class="drawer-section">
@@ -2244,7 +2290,7 @@ function renderDrawerTabContent(tab, data) {
     }
 
     if (tab === 'alerts') {
-        const alertsHtml = alerts.length ? `<table class="table"><thead><tr><th>#</th><th>Alert</th><th>Severity</th><th>Created</th></tr></thead><tbody>${alerts.map((alert, i) => `<tr><td>${i + 1}</td><td>${alert.alert_type || 'Alert'}<div class="alert-text">${(alert.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></td><td>${alert.severity || 'unknown'}</td><td>${alert.created_at ? new Date(alert.created_at).toLocaleString() : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No alerts recorded for this session.</div>';
+        const alertsHtml = alerts.length ? `<table class="table"><thead><tr><th>#</th><th>Alert</th><th>Severity</th><th>Created</th></tr></thead><tbody>${alerts.map((alert, i) => `<tr><td>${i + 1}</td><td>${alert.alert_type || 'Alert'}<div class="alert-text">${(alert.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></td><td>${alert.severity || 'unknown'}</td><td>${alert.created_at ? new Date(alert.created_at).toLocaleString() : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No alerts recorded for this session.</div>';  # noqa: E501
         return `
             ${metadataSection}
             <div class="drawer-section">
@@ -2454,14 +2500,14 @@ function initPipeline() {
                 <tbody>
                     ${data.services.map(s => `
                         <tr>
-                            <td><strong>${s.label}</strong><div class="truncate" style="font-size:12px;color:var(--text-tertiary);">${s.description}</div></td>
+                            <td><strong>${s.label}</strong><div class="truncate" style="font-size:12px;color:var(--text-tertiary);">${s.description}</div></td>  # noqa: E501
                             <td>${s.status}</td>
                             <td>${s.pid || '—'}</td>
                             <td>${s.updated_at || '—'}</td>
                             <td>
-                                ${s.allowed_actions.includes('start') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','start')">Start</button>` : ''}
-                                ${s.allowed_actions.includes('stop') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','stop')">Stop</button>` : ''}
-                                ${s.allowed_actions.includes('restart') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','restart')">Restart</button>` : ''}
+                                ${s.allowed_actions.includes('start') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','start')">Start</button>` : ''}  # noqa: E501
+                                ${s.allowed_actions.includes('stop') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','stop')">Stop</button>` : ''}  # noqa: E501
+                                ${s.allowed_actions.includes('restart') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','restart')">Restart</button>` : ''}  # noqa: E501
                             </td>
                         </tr>
                     `).join('')}
@@ -2633,24 +2679,26 @@ function executeQuery() {
     });
 }
 """
+
+
 def application(environ, start_response):
     """WSGI application."""
     method = environ['REQUEST_METHOD']
     path = environ['PATH_INFO']
     query = parse_qs(environ.get('QUERY_STRING', ''))
-    
+
     try:
         if path == '/':
             response = INDEX_HTML.replace('{{STYLE_CSS}}', STYLE_CSS).replace('{{APP_JS}}', APP_JS).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
             return [response]
-        
+
         elif path == '/api/overview':
             data = get_overview()
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/sessions':
             limit = int(query.get('limit', ['50'])[0])
             offset = int(query.get('offset', ['0'])[0])
@@ -2658,56 +2706,56 @@ def application(environ, start_response):
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/search':
             q = query.get('q', [''])[0]
             data = get_search_results(q)
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/workspaces':
             data = get_workspaces()
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/session':
             session_id = query.get('session_id', [''])[0]
             data = get_session_detail(session_id)
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/tools':
             q = query.get('q', [''])[0]
             data = get_tool_calls(q if q else None)
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/memory':
             data = get_memory()
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/alerts':
             data = get_alerts()
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/action' and method == 'POST':
             body = environ['wsgi.input'].read()
             payload = json.loads(body.decode('utf-8'))
             action = payload.get('action', '')
-            
+
             action_id = f"{action}_{int(time.time() * 1000)}"
             thread = threading.Thread(target=run_action_background, args=(action_id, action))
             thread.daemon = True
             thread.start()
-            
+
             response = json.dumps({
                 "ok": True,
                 "action": action,
@@ -2716,17 +2764,17 @@ def application(environ, start_response):
             }).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/query' and method == 'POST':
             body = environ['wsgi.input'].read()
             payload = json.loads(body.decode('utf-8'))
             sql = payload.get('sql', '')
-            
+
             rows = query_rows(sql)
             response = json.dumps({"rows": rows}).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
-        
+
         elif path == '/api/pmf/services' and method == 'GET':
             try:
                 services = kernel.services()
@@ -2737,7 +2785,7 @@ def application(environ, start_response):
                 response = json.dumps({"error": str(e)}).encode('utf-8')
                 start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
                 return [response]
-        
+
         elif path == '/api/pmf/service' and method == 'POST':
             body = environ['wsgi.input'].read()
             payload = json.loads(body.decode('utf-8'))
@@ -2767,31 +2815,33 @@ def application(environ, start_response):
                 response = json.dumps({"error": str(e)}).encode('utf-8')
                 start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
                 return [response]
-        
+
         else:
             response = b'Not Found'
             start_response('404 Not Found', [('Content-Type', 'text/plain')])
             return [response]
-    
+
     except Exception as e:
         traceback.print_exc()
         response = json.dumps({"error": str(e)}).encode('utf-8')
         start_response('500 Internal Server Error', [('Content-Type', 'application/json')])
         return [response]
 
+
 def start_server(host='127.0.0.1', port=10001):
     """Start WSGI server."""
     print(f"Starting vscode-ark Intelligence Portal at http://{host}:{port}")
     print("Press Ctrl+C to stop.")
-    
+
     # Use custom server to allow address reuse
     class ReusableTCPServer(WSGIServer):
         def server_bind(self):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             super().server_bind()
-    
+
     httpd = make_server(host, port, application, server_class=ReusableTCPServer)
     httpd.serve_forever()
+
 
 if __name__ == '__main__':
     start_server()

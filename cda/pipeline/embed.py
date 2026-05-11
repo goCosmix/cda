@@ -10,8 +10,6 @@ This stage builds semantic embeddings and mini-intelligence artifacts:
 
 import json
 import sqlite3
-import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -241,7 +239,7 @@ def upsert_embedding(
 
     # Maintain a fast FTS index for embedding content and metadata.
     conn.execute(
-        "INSERT OR REPLACE INTO fts_embeddings(rowid, entity_type, entity_id, session_id, exchange_index, content_text, metadata) VALUES (?,?,?,?,?,?,?)",
+        "INSERT OR REPLACE INTO fts_embeddings(rowid, entity_type, entity_id, session_id, exchange_index, content_text, metadata) VALUES (?,?,?,?,?,?,?)",  # noqa: E501
         (
             rowid,
             entity_type,
@@ -388,7 +386,7 @@ def build_anomaly_alerts(conn, session_id: str, analytics=None):
         alerts.append(("elevated_heat", "medium", "Session shows elevated heat and may warrant review."))
 
     if frustrations >= 2:
-        alerts.append(("multiple_frustrations", "medium", "Multiple frustration signals were detected.") )
+        alerts.append(("multiple_frustrations", "medium", "Multiple frustration signals were detected."))
 
     if corrections >= 4 and not saved:
         alerts.append(("corrective_cycle", "high", "Multiple corrections without clear recovery were detected."))
@@ -414,7 +412,7 @@ def build_recommendations(conn, session_id: str, analytics, topic_tags: List[str
     if heat >= 70 and not saved:
         recs.append(("followup", "Review this session for stuck issue patterns and possible unresolved errors."))
     if saved and heat >= 40:
-        recs.append(("review_recovery", "Inspect the recovery path and tool outputs for best-practice behavior.") )
+        recs.append(("review_recovery", "Inspect the recovery path and tool outputs for best-practice behavior."))
     if tools >= 2:
         recs.append(("inspect_tools", "Confirm tool call outputs and any file changes associated with this session."))
     if corrections >= 3:
@@ -536,7 +534,7 @@ def find_similar_sessions(conn, session_id: str, top_k: int = 5):
 
     target = _deserialize_embedding(row[0])
     rows = conn.execute(
-        "SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding FROM embeddings WHERE entity_type='session' AND entity_id!=?",
+        "SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding FROM embeddings WHERE entity_type='session' AND entity_id!=?",  # noqa: E501
         (session_id,),
     ).fetchall()
     candidates = []
@@ -566,7 +564,7 @@ def find_similar_entities(conn, entity_type: str, entity_id: str, top_k: int = 5
 
     target = _deserialize_embedding(row[0])
     query = "SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding "
-    query += "FROM embeddings WHERE entity_type='session' AND entity_id!=?" if entity_type == "session" else "FROM embeddings WHERE entity_type IN ('session','exchange') AND entity_id!=?"
+    query += "FROM embeddings WHERE entity_type='session' AND entity_id!=?" if entity_type == "session" else "FROM embeddings WHERE entity_type IN ('session','exchange') AND entity_id!=?"  # noqa: E501
     rows = conn.execute(query, (entity_id,)).fetchall()
     candidates = []
     for item in rows:
@@ -595,7 +593,7 @@ def semantic_search(conn, query_text: str, top_k: int = 5):
         if candidate_ids:
             placeholder = ",".join("?" for _ in candidate_ids)
             rows = conn.execute(
-                f"SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding FROM embeddings WHERE id IN ({placeholder})",
+                f"SELECT entity_type, entity_id, session_id, exchange_index, content_text, metadata, embedding FROM embeddings WHERE id IN ({placeholder})",  # noqa: E501
                 candidate_ids,
             ).fetchall()
     except Exception:

@@ -12,6 +12,7 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
 def test_signal_patterns_import():
     """Test that signal patterns can be imported from extract.py"""
     try:
@@ -26,6 +27,7 @@ def test_signal_patterns_import():
         assert isinstance(pattern[2], str)  # description
     except ImportError:
         pytest.skip("extract.py dependencies not available")
+
 
 def test_heat_weights():
     """Test heat weight constants"""
@@ -94,6 +96,7 @@ def test_basic_file_operations():
     finally:
         os.unlink(temp_path)
 
+
 def test_compress_decompress():
     """Test compression functions"""
     from cda.pipeline.ingest import compress
@@ -106,6 +109,7 @@ def test_compress_decompress():
     # Test decompression
     decompressed = decompress_vfs(compressed)
     assert decompressed == test_data
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

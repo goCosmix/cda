@@ -17,7 +17,13 @@ Storage locations ingested per workspace/session:
  10. globalStorage/.../memories/ — global memory files (once, not per-workspace)
 """
 
-import os, sys, json, sqlite3, gzip, hashlib, time, logging
+import os
+import json
+import sqlite3
+import gzip
+import hashlib
+import time
+import logging
 from pathlib import Path
 
 # Set up logging
@@ -50,8 +56,10 @@ NOW_MS = int(time.time() * 1000)
 def sha256_short(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()[:16]
 
+
 def compress(data: bytes) -> bytes:
     return gzip.compress(data, compresslevel=6)
+
 
 def read_bytes(path):
     try:
@@ -60,12 +68,14 @@ def read_bytes(path):
         log.warning(f"Failed to read bytes from {path}: {e}")
         return None
 
+
 def read_json(path):
     try:
         return json.loads(Path(path).read_text())
     except Exception as e:
         log.warning(f"Failed to read JSON from {path}: {e}")
         return None
+
 
 def log_ingest(conn, workspace_id, session_id, source_type, status, message=""):
     conn.execute(

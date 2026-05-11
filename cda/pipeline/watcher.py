@@ -19,14 +19,21 @@ and refreshes fts_exchanges for that session only.
 Runs as a foreground daemon. Write PID to watcher.pid.
 """
 
-import os, sys, json, gzip, hashlib, sqlite3, time, threading, signal
+import os
+import sys
+import json
+import gzip
+import hashlib
+import sqlite3
+import time
+import threading
+import signal
 import logging
 from pathlib import Path
-from collections import defaultdict
 from typing import Optional
 
 try:
-    from watchfiles import watch, Change
+    from watchfiles import watch
 except ImportError:
     print("ERROR: watchfiles not installed. Run: pip install watchfiles")
     sys.exit(1)
@@ -66,11 +73,14 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def compress(data: bytes) -> bytes:
     return gzip.compress(data, compresslevel=6)
 
+
 def sha256_short(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()[:16]
+
 
 def now_ms() -> int:
     return int(time.time() * 1000)
@@ -88,9 +98,11 @@ CREATE TABLE IF NOT EXISTS file_offsets (
 );
 """
 
+
 def get_offset(conn, path: str) -> int:
     row = conn.execute("SELECT byte_offset FROM file_offsets WHERE path=?", (path,)).fetchone()
     return row[0] if row else 0
+
 
 def set_offset(conn, path: str, offset: int):
     conn.execute(
@@ -106,7 +118,7 @@ def set_offset(conn, path: str, offset: int):
 def parse_path(path: Path):
     """
     Returns (workspace_id, session_id, file_type) or None.
-    file_type: 'transcript' | 'chat_session' | 'tool_output' | 
+    file_type: 'transcript' | 'chat_session' | 'tool_output' |
                'edit_state' | 'memory_workspace' | 'memory_global' | 'state_vscdb'
     """
     try:
@@ -163,6 +175,7 @@ def init_queue():
     """Initialize the queue directory."""
     QUEUE_DIR.mkdir(exist_ok=True)
 
+
 def queue_operation(op_type: str, data: dict):
     """Write an operation to the persistent queue before executing."""
     timestamp = now_ms()
@@ -178,6 +191,7 @@ def queue_operation(op_type: str, data: dict):
     except Exception as e:
         log.error(f"Failed to queue operation {op_type}: {e}")
 
+
 def dequeue_operation(queue_file: Path):
     """Mark a queued operation as completed."""
     try:
@@ -190,6 +204,7 @@ def dequeue_operation(queue_file: Path):
         log.debug(f"Dequeued operation: {queue_file.name}")
     except Exception as e:
         log.error(f"Failed to dequeue {queue_file}: {e}")
+
 
 def replay_queue(conn):
     """Replay any pending operations from the queue on startup."""
@@ -215,15 +230,13 @@ def replay_queue(conn):
                 elif op_type == "transcript_event":
                     _insert_transcript_events(conn, op_data["ws_id"], op_data["session_id"],
                                             op_data["events"])
-                elif op_type == "chat_message":
-                    _insert_chat_messages(conn, op_data["ws_id"], op_data["session_id"],
-                                        op_data["messages"])
-                elif op_type == "exchange_rebuild":
-                    _rebuild_exchanges_for_session(conn, op_data["session_id"], op_data["ws_id"])
+                elif op_type in ("chat_message", "exchange_rebuild"):
+                    log.warning(f"Skipping unsupported queue op type on replay: {op_type}")
 
                 dequeue_operation(queue_file)
         except Exception as e:
             log.error(f"Failed to replay {queue_file}: {e}")
+
 
 def cleanup_old_queue_files():
     """Clean up completed queue files older than 7 days."""
@@ -282,7 +295,7 @@ def read_new_lines(path: Path, from_offset: int):
     if not new_bytes:
         return [], from_offset
     text = new_bytes.decode("utf-8", errors="replace")
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     return lines, len(raw)
 
 
@@ -501,6 +514,7 @@ def handle_state_vscdb(conn, ws_id, path: Path):
 
 from cda.pipeline.reconstruct import EXCHANGES_SCHEMA, reconstruct_session as _reconstruct_session
 
+
 def rebuild_exchanges(conn, session_id: str, ws_id: str):
     """Delete and rebuild exchanges + FTS for one session."""
     conn.executescript(EXCHANGES_SCHEMA)
@@ -514,12 +528,12 @@ def rebuild_exchanges(conn, session_id: str, ws_id: str):
     # Use transaction for atomicity
     with conn:
         conn.execute(
-            "INSERT INTO fts_exchanges(fts_exchanges, rowid, session_id, workspace_id, exchange_index, user_ts, user_message, reasoning_text, response_text, tool_calls) SELECT 'delete', id, session_id, workspace_id, exchange_index, user_ts, user_message, reasoning_text, response_text, tool_calls FROM exchanges WHERE session_id=?",
+            "INSERT INTO fts_exchanges(fts_exchanges, rowid, session_id, workspace_id, exchange_index, user_ts, user_message, reasoning_text, response_text, tool_calls) SELECT 'delete', id, session_id, workspace_id, exchange_index, user_ts, user_message, reasoning_text, response_text, tool_calls FROM exchanges WHERE session_id=?",  # noqa: E501
             (session_id,)
         )
         # Re-insert
         conn.execute(
-            "INSERT INTO fts_exchanges(rowid, session_id, workspace_id, exchange_index, user_ts, user_message, reasoning_text, response_text, tool_calls) SELECT id, session_id, workspace_id, exchange_index, user_ts, user_message, reasoning_text, response_text, tool_calls FROM exchanges WHERE session_id=?",
+            "INSERT INTO fts_exchanges(rowid, session_id, workspace_id, exchange_index, user_ts, user_message, reasoning_text, response_text, tool_calls) SELECT id, session_id, workspace_id, exchange_index, user_ts, user_message, reasoning_text, response_text, tool_calls FROM exchanges WHERE session_id=?",  # noqa: E501
             (session_id,)
         )
 
@@ -687,7 +701,7 @@ def main():
         session_ws_map[row[0]] = row[1]
     c.close()
 
-    needs_exchange_rebuild = set()
+    needs_exchange_rebuild = set()  # noqa: F841 — reserved for future use
     symbol_index_dirty = False
 
     for changes in watch(VS_ROOT, GLOBAL_MEM, watch_filter=lambda change, path: True, yield_on_timeout=True, rust_timeout=500):

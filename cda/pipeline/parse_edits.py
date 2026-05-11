@@ -30,7 +30,9 @@ Modified files: originalHash != currentHash in snapshot entries
 Edit rounds: len(checkpoints) - 1  (first is always "Initial State")
 """
 
-import sqlite3, gzip, json, re
+import sqlite3
+import gzip
+import json
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
@@ -195,7 +197,7 @@ def run():
 
     for sid, wid, content in deduped:
         try:
-            n = parse_edit_state(conn, sid, wid, content)
+            parse_edit_state(conn, sid, wid, content)
             row = conn.execute(
                 "SELECT total_files, modified_files, edit_rounds FROM edit_sessions WHERE session_id=?",
                 (sid,)

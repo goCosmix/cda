@@ -12,7 +12,11 @@ Output table: exchanges
 Schema added: exchanges
 """
 
-import sqlite3, json, gzip, time, re
+import sqlite3
+import json
+import gzip
+import time
+from typing import Optional
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
@@ -132,8 +136,8 @@ def reconstruct_session(conn, session_id: str, workspace_id: str) -> int:
     # Walk events and group into exchanges
     # An exchange = one user.message + everything until the next user.message
     exchanges = []
-    current: dict | None = None
-    current_turn: dict | None = None   # tracks the active assistant turn
+    current: Optional[dict] = None
+    current_turn: Optional[dict] = None   # tracks the active assistant turn
 
     def flush_turn():
         nonlocal current_turn
@@ -317,10 +321,9 @@ def reconstruct_from_chat_blob(conn, session_id, workspace_id, content):
     Returns number of exchanges written.
     """
     raw = gzip.decompress(content).decode('utf-8', errors='replace')
-    lines = [l for l in raw.splitlines() if l.strip()]
+    lines = [ln for ln in raw.splitlines() if ln.strip()]
 
     requests_map = {}   # request_id -> parsed dict (ordered by insertion)
-    result_patches = {} # turn_index -> result metadata (from kind=1)
     turn_index = 0
 
     for line in lines:

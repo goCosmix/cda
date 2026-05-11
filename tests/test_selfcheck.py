@@ -20,9 +20,6 @@ class TestVersion(unittest.TestCase):
             selfcheck.VERSION_FILE.write_text(content)
         return selfcheck.check_version()
 
-    def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
-
     def test_valid(self):
         # Use the actual installed version so __version__ comparison passes
         from cda import __version__
@@ -38,7 +35,6 @@ class TestVersion(unittest.TestCase):
         r = self._make(self.tmp, None)
         self.assertFalse(r["passed"])
         self.assertIn("not found", r["message"])
-
 
     def setUp(self):
         # Resolve so macOS /tmp symlink doesn't cause path mismatch

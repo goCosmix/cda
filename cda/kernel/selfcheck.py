@@ -21,7 +21,6 @@ Checks:
 import importlib
 import os
 import shutil
-import signal
 import sqlite3
 import subprocess
 import sys
@@ -60,6 +59,7 @@ def _ok(name, message, details=None):
     if details:
         r["details"] = details
     return r
+
 
 def _fail(name, message, details=None):
     r = {"name": name, "passed": False, "message": message}
@@ -123,7 +123,7 @@ def check_db_accessible():
         mode = row[0] if row else "unknown"
         if mode != "wal":
             return _fail("db_accessible", f"DB is accessible but journal_mode={mode} (expected wal)")
-        return _ok("db_accessible", f"DB accessible, journal_mode=wal")
+        return _ok("db_accessible", "DB accessible, journal_mode=wal")
     except sqlite3.DatabaseError as exc:
         return _fail("db_accessible", f"DB is corrupt or unreadable: {exc}")
 

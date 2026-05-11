@@ -21,10 +21,9 @@ import gzip
 import json
 import re
 import ast
-import sys
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional, DefaultDict
+from typing import Dict, List, Tuple, DefaultDict
 from collections import defaultdict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
@@ -578,7 +577,7 @@ def ensure_schema(conn):
 def process_session(conn, session_id, blob):
     """Process one chat session blob and write rows to all tables."""
     raw = gzip.decompress(blob).decode('utf-8', errors='replace')
-    lines = [l for l in raw.splitlines() if l.strip()]
+    lines = [ln for ln in raw.splitlines() if ln.strip()]
 
     requests_map = extract_requests_from_chat(lines)
     if not requests_map:
@@ -691,8 +690,8 @@ def build_session_analysis(conn, session_id):
         try:
             from datetime import datetime
             f = datetime.fromisoformat(str(first_ts).replace('Z', '+00:00'))
-            l = datetime.fromisoformat(str(last_ts).replace('Z', '+00:00'))
-            duration = (l - f).total_seconds() / 60
+            ln = datetime.fromisoformat(str(last_ts).replace('Z', '+00:00'))
+            duration = (ln - f).total_seconds() / 60
         except Exception:
             pass
 
@@ -725,7 +724,6 @@ def build_session_analysis(conn, session_id):
     # ── Per-turn heat timeline ─────────────────────────────────────
     # Group signals by ts, compute heat contribution per turn,
     # find: peak_heat, final_heat (last 5 turns), turning_point
-    from collections import defaultdict
     signals_ordered = conn.execute(
         """SELECT ts, signal_type, user_message FROM exchange_signals
            WHERE session_id=? ORDER BY ts NULLS LAST""",
@@ -764,7 +762,7 @@ def build_session_analysis(conn, session_id):
 
     # Saved session: had significant heat AND recovered
     # Recovery = final_heat == 0 (no heat in last 5 turns) AND ended with affirmations
-    total_affirmations = sig_map.get('affirmation', 0) + sig_map.get('approval', 0)
+    total_affirmations = sig_map.get('affirmation', 0) + sig_map.get('approval', 0)  # noqa: F841
     post_peak_affirmations = 0
     if turning_point_ts is not None:
         post_peak_affirmations = conn.execute(
@@ -1055,7 +1053,7 @@ def run():
     build_symbol_index(conn)
     conn.close()
 
-    print(f"\nDone.")
+    print("\nDone.")
     print(f"  token_usage rows:     {total_tok}")
     print(f"  exchange_signals rows:{total_sig}")
     print(f"  compaction rows:      {total_comp}")

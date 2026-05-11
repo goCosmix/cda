@@ -185,8 +185,17 @@ def check_db_wal():
     issues = []
     if wal.exists():
         size_kb = wal.stat().st_size // 1024
-        if size_kb > 100 * 1024:  # > 100MB WAL is abnormal
-            issues.append(f"WAL file is large ({size_kb // 1024} MB) — may indicate abandoned writer")
+        if size_kb > 100 * 1024:  # > 100MB WAL may indicate abandoned writer
+            # Only flag as bad if the watcher is NOT running (active writer is fine)
+            watcher_active = False
+            if PID_FILE.exists():
+                try:
+                    os.kill(int(PID_FILE.read_text().strip()), 0)
+                    watcher_active = True
+                except (ProcessLookupError, ValueError, OSError):
+                    pass
+            if not watcher_active:
+                issues.append(f"WAL file is large ({size_kb // 1024} MB) — may indicate abandoned writer")
     if shm.exists() and not wal.exists():
         issues.append("SHM file present without WAL — possible unclean shutdown")
     if issues:
@@ -211,7 +220,7 @@ def check_watcher_state():
 def check_queue_depth():
     if not QUEUE_DIR.exists():
         return _fail("queue_depth", f"watcher-queue/ not found at {QUEUE_DIR}")
-    pending = list(QUEUE_DIR.iterdir())
+    pending = [f for f in QUEUE_DIR.iterdir() if not f.name.endswith(".completed")]
     count = len(pending)
     if count > 500:
         return _fail("queue_depth", f"queue backlog is high: {count} files pending")

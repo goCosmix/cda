@@ -60,11 +60,11 @@ import click
 # Package-relative paths
 PACKAGE_DIR = Path(__file__).resolve().parent
 ARK_DIR = PACKAGE_DIR.parent.parent
-DATA_DIR = ARK_DIR / "data"
-DB_PATH = DATA_DIR / "vscode-ark.db"
-PID_FILE = DATA_DIR / "watcher.pid"
-UI_PID_FILE = DATA_DIR / "ui.pid"
-UI_LOG_FILE = DATA_DIR / "ui.log"
+LOCAL_DIR = ARK_DIR / "local"
+DB_PATH = LOCAL_DIR / "data" / "vscode-ark.db"
+PID_FILE = LOCAL_DIR / "run" / "watcher.pid"
+UI_PID_FILE = LOCAL_DIR / "run" / "ui.pid"
+UI_LOG_FILE = LOCAL_DIR / "logs" / "ui.log"
 WATCHER = PACKAGE_DIR / "watcher.py"
 INGEST = PACKAGE_DIR / "ingest.py"
 RECON = PACKAGE_DIR / "reconstruct.py"
@@ -315,7 +315,7 @@ def status():
         click.echo(f"  Start with: {bold('cda watch start')}")
 
     # Queue status
-    queue_dir = DATA_DIR / "watcher-queue"
+    queue_dir = LOCAL_DIR / "queue"
     if queue_dir.exists():
         pending = len(list(queue_dir.glob("*.json")))
         completed = len(list(queue_dir.glob("*.completed")))
@@ -1417,7 +1417,7 @@ def policy():
 def policy_allow(pattern):
     """Add an allow pattern for search results."""
     # For now, store in a simple text file
-    policy_file = DATA_DIR / "policy.txt"
+    policy_file = LOCAL_DIR / "config" / "policy.txt"
     try:
         with open(policy_file, "a") as f:
             f.write(f"ALLOW {pattern}\n")
@@ -1429,7 +1429,7 @@ def policy_allow(pattern):
 @click.argument("pattern")
 def policy_deny(pattern):
     """Add a deny pattern for search results."""
-    policy_file = DATA_DIR / "policy.txt"
+    policy_file = LOCAL_DIR / "config" / "policy.txt"
     try:
         with open(policy_file, "a") as f:
             f.write(f"DENY {pattern}\n")
@@ -1440,7 +1440,7 @@ def policy_deny(pattern):
 @policy.command("list")
 def policy_list():
     """List current policies."""
-    policy_file = DATA_DIR / "policy.txt"
+    policy_file = LOCAL_DIR / "config" / "policy.txt"
     if not policy_file.exists():
         click.echo(dim("  No policies configured"))
         return
@@ -1462,7 +1462,7 @@ def policy_list():
 
 def check_policy(text):
     """Check if text passes policy filters. Returns True if allowed."""
-    policy_file = DATA_DIR / "policy.txt"
+    policy_file = LOCAL_DIR / "config" / "policy.txt"
     if not policy_file.exists():
         return True  # No policies = allow all
 

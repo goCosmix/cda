@@ -31,16 +31,16 @@ except ImportError:
     sys.exit(1)
 
 ROOT_DIR  = Path(__file__).resolve().parent.parent.parent
-DATA_DIR  = ROOT_DIR / "data"
-DB_PATH   = DATA_DIR / "vscode-ark.db"
-PID_FILE  = DATA_DIR / "watcher.pid"
-QUEUE_DIR = DATA_DIR / "watcher-queue"
+LOCAL_DIR = ROOT_DIR / "local"
+DB_PATH   = LOCAL_DIR / "data" / "vscode-ark.db"
+PID_FILE  = LOCAL_DIR / "run" / "watcher.pid"
+QUEUE_DIR = LOCAL_DIR / "queue"
 # Allow override via env var for portability
 VSCODE_DATA_DIR = Path(os.environ.get("VSCODE_DATA_DIR", Path.home() / "Library/Application Support/Code/User"))
 VS_ROOT   = VSCODE_DATA_DIR / "workspaceStorage"
 GLOBAL_MEM = VSCODE_DATA_DIR / "globalStorage/github.copilot-chat/memory-tool/memories"
 
-log_file = DATA_DIR / "watcher.log"
+log_file = LOCAL_DIR / "logs" / "watcher.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",

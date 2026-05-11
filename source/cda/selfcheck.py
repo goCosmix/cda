@@ -4,15 +4,15 @@ cda selfcheck — the system knows itself.
 Checks:
   version         — VERSION file exists, valid semver, matches __version__
   install_path    — editable install of cda resolves to this project dir
-  db_present      — data/vscode-ark.db exists on disk
+  db_present      — local/data/vscode-ark.db exists on disk
   db_accessible   — DB opens and WAL mode is confirmed
   db_integrity    — PRAGMA integrity_check passes
   db_tables       — all expected tables are present
   db_counts       — core tables have rows (non-empty)
   db_wal          — no abandoned WAL/SHM files blocking writes
   watcher_state   — watcher.pid present and process is alive (or cleanly absent)
-  queue_depth     — data/watcher-queue/ exists and reports pending file count
-  data_gitignored — data/ is gitignored in git
+  queue_depth     — local/queue/ exists and reports pending file count
+  data_gitignored — local/ is gitignored in git
   cli_path        — this binary is on PATH and resolves correctly
   python_runtime  — running on expected Python (3.9, not Homebrew 3.14+)
   dependencies    — all required imports load without error
@@ -31,10 +31,10 @@ from pathlib import Path
 PACKAGE_DIR  = Path(__file__).resolve().parent
 SOURCE_DIR   = PACKAGE_DIR.parent          # source/  — tracked repo root
 PROJECT_DIR  = PACKAGE_DIR.parent.parent   # repo root — where layers live
-DATA_DIR     = PROJECT_DIR / "data"
-DB_PATH      = DATA_DIR / "vscode-ark.db"
-PID_FILE     = DATA_DIR / "watcher.pid"
-QUEUE_DIR    = DATA_DIR / "watcher-queue"
+LOCAL_DIR    = PROJECT_DIR / "local"
+DB_PATH      = LOCAL_DIR / "data" / "vscode-ark.db"
+PID_FILE     = LOCAL_DIR / "run" / "watcher.pid"
+QUEUE_DIR    = LOCAL_DIR / "queue"
 VERSION_FILE = SOURCE_DIR / "VERSION"
 
 REQUIRED_TABLES = [
@@ -221,13 +221,13 @@ def check_queue_depth():
 def check_data_gitignored():
     try:
         result = subprocess.run(
-            ["git", "check-ignore", "-q", "data"],
+            ["git", "check-ignore", "-q", "local"],
             cwd=PROJECT_DIR,
             capture_output=True,
         )
         if result.returncode == 0:
-            return _ok("data_gitignored", "data/ is gitignored")
-        return _fail("data_gitignored", "data/ is NOT gitignored — sensitive data at risk")  # noqa: E501
+            return _ok("data_gitignored", "local/ is gitignored")
+        return _fail("data_gitignored", "local/ is NOT gitignored — sensitive data at risk")  # noqa: E501
     except FileNotFoundError:
         return _fail("data_gitignored", "git not available")
 

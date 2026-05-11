@@ -34,8 +34,8 @@ VSCODE_DATA_DIR = Path(os.environ.get("VSCODE_DATA_DIR", HOME / "Library/Applica
 VS_STORAGE  = VSCODE_DATA_DIR / "workspaceStorage"
 GLOBAL_MEM  = VSCODE_DATA_DIR / "globalStorage/github.copilot-chat/memory-tool/memories"
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = ROOT_DIR / "data"
-DB_PATH  = DATA_DIR / "vscode-ark.db"
+LOCAL_DIR = ROOT_DIR / "local"
+DB_PATH  = LOCAL_DIR / "data" / "vscode-ark.db"
 
 # Large index DBs — too big to blob, record path only
 SKIP_BLOB_PATTERNS = ["workspace-chunks.db", "local-index"]

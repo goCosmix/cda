@@ -9,17 +9,18 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = ROOT_DIR / "data"
+LOCAL_DIR = ROOT_DIR / "local"
 PACKAGE_DIR = Path(__file__).resolve().parent
-RUNTIME_FILE = DATA_DIR / "pmf_runtime.json"
-LOG_DIR = DATA_DIR / "pmf_logs"
-WATCHER_PID_FILE = DATA_DIR / "watcher.pid"
-UI_PID_FILE = DATA_DIR / "ui.pid"
+RUNTIME_FILE = LOCAL_DIR / "pmf" / "runtime.json"
+LOG_DIR = LOCAL_DIR / "pmf" / "logs"
+WATCHER_PID_FILE = LOCAL_DIR / "run" / "watcher.pid"
+UI_PID_FILE = LOCAL_DIR / "run" / "ui.pid"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 10001
 
-DATA_DIR.mkdir(exist_ok=True)
-LOG_DIR.mkdir(exist_ok=True)
+(LOCAL_DIR / "data").mkdir(parents=True, exist_ok=True)
+(LOCAL_DIR / "run").mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def now_ts():
@@ -73,7 +74,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         description="Live VS Code data watcher and incremental ingest process.",
         cwd=ROOT_DIR,
         pid_file=WATCHER_PID_FILE,
-        log_file=DATA_DIR / "watcher.log",
+        log_file=LOCAL_DIR / "logs" / "watcher.log",
         allowed_actions=["start", "stop", "restart", "status"],
     ),
     "ui": ServiceSpec(
@@ -83,7 +84,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         description="Local web dashboard for Ark runtime and session analytics.",
         cwd=ROOT_DIR,
         pid_file=UI_PID_FILE,
-        log_file=DATA_DIR / "ui.log",
+        log_file=LOCAL_DIR / "logs" / "ui.log",
         allowed_actions=["start", "stop", "restart", "status"],
     ),
     "sync": ServiceSpec(

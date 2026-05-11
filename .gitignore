@@ -231,10 +231,8 @@ dmypy.json
 *.db-*
 pmf_runtime.json
 *.log
-watcher-queue/
 .venv/
-data/
-run/
+local/
 build/
 cache/
 sys/

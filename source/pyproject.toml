@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vscode-ark"
-version = "2.0.0"
+version = "2.0.1"
 description = "Comprehensive analysis system for VS Code/Copilot Chat sessions with behavioral signal extraction and heat scoring"
 readme = "readme.md"
 license = "MIT"

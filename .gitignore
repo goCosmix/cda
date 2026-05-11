@@ -14,6 +14,9 @@ __pycache__/
 venv/
 env/
 
+# Type checking
+.mypy_cache/
+
 # Test / coverage
 .pytest_cache/
 .coverage

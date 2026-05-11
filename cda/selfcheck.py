@@ -3,7 +3,7 @@ cda selfcheck — the system knows itself.
 
 Checks:
   version         — VERSION file exists, valid semver, matches __version__
-  install_path    — editable install of vscode_ark resolves to this project dir
+  install_path    — editable install of cda resolves to this project dir
   db_present      — data/vscode-ark.db exists on disk
   db_accessible   — DB opens and WAL mode is confirmed
   db_integrity    — PRAGMA integrity_check passes
@@ -77,7 +77,7 @@ def check_version():
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         return _fail("version", f"VERSION is not valid semver: {version!r}")
     try:
-        from vscode_ark import __version__
+        from cda import __version__
         if __version__ != version:
             return _fail("version",
                 f"VERSION file ({version}) does not match __version__ ({__version__})")
@@ -90,12 +90,12 @@ def check_install_path():
     try:
         result = subprocess.run(
             [sys.executable, "-c",
-             "import vscode_ark, pathlib; "
-             "print(pathlib.Path(vscode_ark.__file__).parent.parent.resolve())"],
+             "import cda, pathlib; "
+             "print(pathlib.Path(cda.__file__).parent.parent.resolve())"],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
-            return _fail("install_path", "vscode_ark not importable — editable install broken")
+            return _fail("install_path", "cda not importable — editable install broken")
         install_dir = Path(result.stdout.strip()).resolve()
         if install_dir == PROJECT_DIR:
             return _ok("install_path", f"editable install → {install_dir}")

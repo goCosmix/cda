@@ -230,10 +230,8 @@ dmypy.json
 *.db*
 *.db-*
 pmf_runtime.json
-pmf_logs/
 *.log
 watcher-queue/
-policy.txt
 .DS_Store.venv/
 .venv/
 data/

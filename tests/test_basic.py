@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 def test_signal_patterns_import():
     """Test that signal patterns can be imported from extract.py"""
     try:
-        from vscode_ark.extract import SIGNAL_PATTERNS
+        from cda.extract import SIGNAL_PATTERNS
         assert isinstance(SIGNAL_PATTERNS, list)
         assert len(SIGNAL_PATTERNS) > 0
         # Check structure of first pattern
@@ -30,7 +30,7 @@ def test_signal_patterns_import():
 def test_heat_weights():
     """Test heat weight constants"""
     try:
-        from vscode_ark.extract import HEAT_WEIGHT
+        from cda.extract import HEAT_WEIGHT
         assert isinstance(HEAT_WEIGHT, dict)
         assert 'correction' in HEAT_WEIGHT
         assert 'frustration' in HEAT_WEIGHT
@@ -41,7 +41,7 @@ def test_heat_weights():
 
 
 def test_extract_code_symbols():
-    from vscode_ark.extract import extract_code_symbols
+    from cda.extract import extract_code_symbols
 
     py_source = """
 class Foo:
@@ -74,7 +74,7 @@ class Baz {}
 
 def test_basic_file_operations():
     """Test basic file reading functions"""
-    from vscode_ark.ingest import read_json, read_bytes
+    from cda.ingest import read_json, read_bytes
 
     # Test with non-existent file
     assert read_json("/nonexistent/file.json") is None
@@ -96,8 +96,8 @@ def test_basic_file_operations():
 
 def test_compress_decompress():
     """Test compression functions"""
-    from vscode_ark.ingest import compress
-    from vscode_ark.reconstruct import decompress_vfs
+    from cda.ingest import compress
+    from cda.reconstruct import decompress_vfs
 
     test_data = b"Hello, World! This is test data for compression." * 100  # Make it larger
     compressed = compress(test_data)

@@ -53,7 +53,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "cda=vscode_ark.cli:main",
+            "cda=cda.cli:main",
         ],
     },
     include_package_data=True,

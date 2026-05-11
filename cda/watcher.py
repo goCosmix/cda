@@ -30,16 +30,17 @@ except ImportError:
     print("ERROR: watchfiles not installed. Run: pip install watchfiles")
     sys.exit(1)
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-DB_PATH   = ROOT_DIR / "vscode-ark.db"
-PID_FILE  = ROOT_DIR / "watcher.pid"
-QUEUE_DIR = ROOT_DIR / "watcher-queue"
+ROOT_DIR  = Path(__file__).resolve().parent.parent
+DATA_DIR  = ROOT_DIR / "data"
+DB_PATH   = DATA_DIR / "vscode-ark.db"
+PID_FILE  = DATA_DIR / "watcher.pid"
+QUEUE_DIR = DATA_DIR / "watcher-queue"
 # Allow override via env var for portability
 VSCODE_DATA_DIR = Path(os.environ.get("VSCODE_DATA_DIR", Path.home() / "Library/Application Support/Code/User"))
 VS_ROOT   = VSCODE_DATA_DIR / "workspaceStorage"
 GLOBAL_MEM = VSCODE_DATA_DIR / "globalStorage/github.copilot-chat/memory-tool/memories"
 
-log_file = ROOT_DIR / "watcher.log"
+log_file = DATA_DIR / "watcher.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",
@@ -497,7 +498,7 @@ def handle_state_vscdb(conn, ws_id, path: Path):
 # Exchange reconstruction (incremental)
 # ─────────────────────────────────────────────
 
-from vscode_ark.reconstruct import EXCHANGES_SCHEMA, reconstruct_session as _reconstruct_session
+from cda.reconstruct import EXCHANGES_SCHEMA, reconstruct_session as _reconstruct_session
 
 def rebuild_exchanges(conn, session_id: str, ws_id: str):
     """Delete and rebuild exchanges + FTS for one session."""
@@ -583,7 +584,7 @@ def main():
     # Ensure watcher-required schema exists before replaying operations.
     try:
         import importlib
-        extract = importlib.import_module('vscode_ark.extract')
+        extract = importlib.import_module('cda.extract')
         importlib.reload(extract)
         extract.ensure_schema(conn)
     except Exception as ex:
@@ -633,7 +634,7 @@ def main():
         # Incremental extraction: run behavioral signals + session analysis
         try:
             import importlib
-            extract = importlib.import_module('vscode_ark.extract')
+            extract = importlib.import_module('cda.extract')
             importlib.reload(extract)
             c2 = get_conn()
             try:
@@ -649,7 +650,7 @@ def main():
                     extract.build_session_analysis(c2, session_id)
                     c2.commit()
                     try:
-                        embed = importlib.import_module('vscode_ark.embed')
+                        embed = importlib.import_module('cda.embed')
                         importlib.reload(embed)
                         embed.build_session_intelligence(c2, session_id)
                         c2.commit()
@@ -746,7 +747,7 @@ def main():
             if symbol_index_dirty:
                 try:
                     import importlib
-                    extract = importlib.import_module('vscode_ark.extract')
+                    extract = importlib.import_module('cda.extract')
                     importlib.reload(extract)
                     c2 = get_conn()
                     try:

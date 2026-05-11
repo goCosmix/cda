@@ -33,13 +33,13 @@ import click
 
 ARK_DIR  = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ARK_DIR))
-from vscode_ark.reconstruct import decompress_vfs
+from cda.reconstruct import decompress_vfs
 
 DB_PATH  = ARK_DIR / "vscode-ark.db"
 PID_FILE = ARK_DIR / "watcher.pid"
-WATCHER  = ARK_DIR / "vscode_ark" / "watcher.py"
-INGEST   = ARK_DIR / "vscode_ark" / "ingest.py"
-RECON    = ARK_DIR / "vscode_ark" / "reconstruct.py"
+WATCHER  = ARK_DIR / "cda" / "watcher.py"
+INGEST   = ARK_DIR / "cda" / "ingest.py"
+RECON    = ARK_DIR / "cda" / "reconstruct.py"
 
 
 # ─────────────────────────────────────────────

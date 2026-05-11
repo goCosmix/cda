@@ -48,13 +48,13 @@ class ServiceSpec:
                 sys.executable,
                 "-c",
                 (
-                    "import vscode_ark.web as w; "
+                    "import cda.web as w; "
                     f"w.start_server(host={json.dumps(host)}, port={port})"
                 ),
             ]
 
         if self.service_id == "watcher":
-            return [sys.executable, str(ROOT_DIR / "vscode_ark" / "watcher.py")]
+            return [sys.executable, str(ROOT_DIR / "cda" / "watcher.py")]
 
         if self.command is not None:
             return list(self.command)
@@ -88,7 +88,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Full Sync",
         service_type="task",
         description="Full ingest and rebuild pipeline for Ark data.",
-        command=[sys.executable, str(ROOT_DIR / "vscode_ark" / "ingest.py")],
+        command=[sys.executable, str(ROOT_DIR / "cda" / "ingest.py")],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "sync.log",
         allowed_actions=["start", "status"],
@@ -98,7 +98,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Reconstruct",
         service_type="task",
         description="Reconstruct conversations and rebuild the full text search index.",
-        command=[sys.executable, str(ROOT_DIR / "vscode_ark" / "reconstruct.py")],
+        command=[sys.executable, str(ROOT_DIR / "cda" / "reconstruct.py")],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "reconstruct.log",
         allowed_actions=["start", "status"],
@@ -108,7 +108,7 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Embed Build",
         service_type="task",
         description="Build semantic embeddings and session intelligence.",
-        command=[sys.executable, str(ROOT_DIR / "vscode_ark" / "embed.py"), "build"],
+        command=[sys.executable, str(ROOT_DIR / "cda" / "embed.py"), "build"],
         cwd=ROOT_DIR,
         log_file=LOG_DIR / "embed.log",
         allowed_actions=["start", "status"],

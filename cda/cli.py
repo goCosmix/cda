@@ -53,17 +53,18 @@ Commands:
 
 import os, sys, json, gzip, sqlite3, subprocess, signal, textwrap, time, datetime
 from pathlib import Path
-from vscode_ark.reconstruct import decompress_vfs
+from cda.reconstruct import decompress_vfs
 
 import click
 
 # Package-relative paths
 PACKAGE_DIR = Path(__file__).resolve().parent
 ARK_DIR = PACKAGE_DIR.parent
-DB_PATH = ARK_DIR / "vscode-ark.db"
-PID_FILE = ARK_DIR / "watcher.pid"
-UI_PID_FILE = ARK_DIR / "ui.pid"
-UI_LOG_FILE = ARK_DIR / "ui.log"
+DATA_DIR = ARK_DIR / "data"
+DB_PATH = DATA_DIR / "vscode-ark.db"
+PID_FILE = DATA_DIR / "watcher.pid"
+UI_PID_FILE = DATA_DIR / "ui.pid"
+UI_LOG_FILE = DATA_DIR / "ui.log"
 WATCHER = PACKAGE_DIR / "watcher.py"
 INGEST = PACKAGE_DIR / "ingest.py"
 RECON = PACKAGE_DIR / "reconstruct.py"
@@ -187,7 +188,7 @@ def _code_search_snippet(text, match, radius=80):
 def import_embed_module():
     try:
         import importlib
-        import vscode_ark.embed as embed
+        import cda.embed as embed
         return importlib.reload(embed)
     except Exception as exc:
         raise RuntimeError(
@@ -314,7 +315,7 @@ def status():
         click.echo(f"  Start with: {bold('cda watch start')}")
 
     # Queue status
-    queue_dir = ARK_DIR / "watcher-queue"
+    queue_dir = DATA_DIR / "watcher-queue"
     if queue_dir.exists():
         pending = len(list(queue_dir.glob("*.json")))
         completed = len(list(queue_dir.glob("*.completed")))
@@ -355,7 +356,7 @@ def serve(host, port):
     click.echo(yellow("  Use `cda ui start` to launch it as a background service."))
     try:
         import importlib
-        import vscode_ark.web as web
+        import cda.web as web
         importlib.reload(web)
     except Exception as exc:
         click.echo(red("  Failed to start web UI. Ensure the package is installed and importable."))
@@ -389,7 +390,7 @@ def ui_start(host, port):
     try:
         result = kernel.start_service("ui", options={"host": host, "port": port})
         click.echo(green(f"  Web UI started in background at http://{host}:{port} pid={result['pid']}"))
-        click.echo(yellow(f"  Logs: {ARK_DIR / 'ui.log'}"))
+        click.echo(yellow(f"  Logs: {UI_LOG_FILE}"))
     except PMFKernelError as exc:
         click.echo(red(f"  Failed to start UI: {exc}"))
 
@@ -1416,7 +1417,7 @@ def policy():
 def policy_allow(pattern):
     """Add an allow pattern for search results."""
     # For now, store in a simple text file
-    policy_file = ARK_DIR / "policy.txt"
+    policy_file = DATA_DIR / "policy.txt"
     try:
         with open(policy_file, "a") as f:
             f.write(f"ALLOW {pattern}\n")
@@ -1428,7 +1429,7 @@ def policy_allow(pattern):
 @click.argument("pattern")
 def policy_deny(pattern):
     """Add a deny pattern for search results."""
-    policy_file = ARK_DIR / "policy.txt"
+    policy_file = DATA_DIR / "policy.txt"
     try:
         with open(policy_file, "a") as f:
             f.write(f"DENY {pattern}\n")
@@ -1439,7 +1440,7 @@ def policy_deny(pattern):
 @policy.command("list")
 def policy_list():
     """List current policies."""
-    policy_file = ARK_DIR / "policy.txt"
+    policy_file = DATA_DIR / "policy.txt"
     if not policy_file.exists():
         click.echo(dim("  No policies configured"))
         return
@@ -1461,7 +1462,7 @@ def policy_list():
 
 def check_policy(text):
     """Check if text passes policy filters. Returns True if allowed."""
-    policy_file = ARK_DIR / "policy.txt"
+    policy_file = DATA_DIR / "policy.txt"
     if not policy_file.exists():
         return True  # No policies = allow all
 
@@ -2302,7 +2303,7 @@ def tokens(session_id, limit):
 @click.option("--fail-fast", is_flag=True, help="Stop at first failure.")
 def check(as_json, fail_fast):
     """Run a full self-diagnostic. The system checks itself."""
-    from vscode_ark.selfcheck import CHECKS
+    from cda.selfcheck import CHECKS
 
     if not as_json:
         click.echo()

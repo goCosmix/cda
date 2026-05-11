@@ -54,7 +54,7 @@ test = [
 ]
 
 [project.scripts]
-cda = "vscode_ark.cli:main"
+cda = "cda.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/goCosmix/vscode-ark"
@@ -65,10 +65,10 @@ Changelog = "https://github.com/goCosmix/vscode-ark/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["vscode_ark*"]
+include = ["cda*"]
 
 [tool.setuptools.package-data]
-vscode_ark = ["*.txt", "*.md", "*.py"]
+cda = ["*.txt", "*.md", "*.py"]
 
 [tool.black]
 line-length = 100

@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from wsgiref.simple_server import make_server, WSGIServer
 from urllib.parse import parse_qs, urlparse, urlencode, quote, unquote
-from vscode_ark.pmf_kernel import PMFKernel, PMFKernelError
+from cda.pmf_kernel import PMFKernel, PMFKernelError
 
 # Get DB path relative to this file
 PACKAGE_DIR = Path(__file__).resolve().parent

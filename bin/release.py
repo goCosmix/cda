@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parent
 VERSION_FILE = ROOT / "VERSION"
 PYPROJECT_FILE = ROOT / "pyproject.toml"
 SETUP_FILE = ROOT / "setup.py"
-INIT_FILE = ROOT / "vscode_ark" / "__init__.py"
+INIT_FILE = ROOT / "cda" / "__init__.py"
 
 VERSION_PATTERN = r"\d+\.\d+\.\d+"
 

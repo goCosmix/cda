@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-05-11
+
+### Added
+- **`cda setup`** — master onboarding command: init → pmf install → sync → up. Replaces the four-step manual process with a single command. Idempotent, safe to re-run. Accepts `--skip-sync` and `--no-browser`.
+- **PMF-first architecture**: all background processes (watcher, web UI) start exclusively through the PMF kernel. `cda watch start` and `cda ui start` now display an advisory if the LaunchAgent is not installed.
+- `_pmf_warn_if_not_installed()` helper — emitted before any background service start when the LaunchAgent plist is absent.
+
+### Changed
+- README quickstart simplified to two commands: `pip install code-data-ark` + `cda setup`
+- Added PMF architecture diagram and process management reference to README
+
 ## [2.0.4] - 2026-05-11
 
 ### Added

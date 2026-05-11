@@ -78,48 +78,67 @@ make install-dev
 
 ## ⚡ Quick Start
 
-1. **Install**
-
 ```bash
 pip install code-data-ark
+cda setup
 ```
 
-2. **Initialize — create `~/.cda/` and validate your VS Code data path**
+That's it. `cda setup` runs four steps in sequence:
+
+| Step | What it does |
+|------|-------------|
+| **1. Init** | Creates `~/.cda/` directory tree, validates your VS Code data path |
+| **2. PMF install** | Registers a macOS LaunchAgent — CDA starts automatically on every login |
+| **3. Sync** | Ingests all VS Code + Copilot session data into `~/.cda/data/cda.db` |
+| **4. Up** | Starts the watcher daemon and web UI via the PMF kernel, opens browser |
+
+After setup, everything is managed by the **PMF kernel**. On every login, `launchd` calls `cda pmf up` which starts the watcher and web UI. No terminal interaction required.
+
+### Options
 
 ```bash
-cda init
+cda setup --skip-sync     # Skip initial ingest (run `cda sync` manually later)
+cda setup --no-browser    # Don't open browser when the UI starts
 ```
 
-3. **Ingest all VS Code session data**
+### After setup
 
 ```bash
-cda sync
+cda check           # Full system health diagnostic
+cda sync            # Re-ingest after significant new session activity
+cda pmf services    # View all running services and their status
+cda pmf uninstall   # Remove the auto-start LaunchAgent registration
 ```
 
-4. **Start the live watcher daemon**
+## 🔧 Process Management (PMF)
 
-```bash
-cda watch start
+All background processes run through the embedded PMF kernel. The LaunchAgent is the entry point — nothing starts directly on the host outside of PMF.
+
+```
+launchd (login)
+  └─ cda pmf up
+       ├─ PMF kernel → watcher daemon   (cda.pipeline.watcher)
+       └─ PMF kernel → web UI server    (cda.ui.web)
 ```
 
-5. **Open the web dashboard**
+### PMF commands
 
 ```bash
-cda serve   # → http://127.0.0.1:10001
-```
-
-6. **Build semantic intelligence** (optional, requires `sentence-transformers`)
-
-```bash
-cda embed build
+cda pmf services           # List all services with status and PID
+cda pmf start <service>    # Start a service (watcher, ui, sync, reconstruct, embed-build)
+cda pmf stop <service>     # Stop a service
+cda pmf restart <service>  # Restart a service
+cda pmf logs <service>     # Tail the service log
+cda pmf up                 # Start watcher + UI (opens browser) — same as launchd trigger
+cda pmf install            # Register LaunchAgent (done automatically by cda setup)
+cda pmf uninstall          # Remove LaunchAgent
 ```
 
 ## 🌐 Web UI
 
-- **Background service**: `cda ui start`
-- **Stop service**: `cda ui stop`
-- **Service status**: `cda ui status`
-- **Foreground mode**: `cda serve`
+- **Background service** (default after setup): managed by PMF, starts on login
+- **Foreground mode**: `cda serve` — runs in the terminal, opens browser, Ctrl+C to stop
+- **Access**: `http://127.0.0.1:10001`
 
 The web UI includes:
 

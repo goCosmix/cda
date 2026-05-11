@@ -29,6 +29,7 @@ Commands:
   cda pmf uninstall          Remove the LaunchAgent registration
   cda check                  Run a full self-diagnostic. The system checks itself.
   cda init                   First-run setup — create ~/.cda/ and validate environment
+  cda setup                  Full onboarding: init → pmf install → sync → up (browser opens)
   cda serve                  Start the local web UI on port 10001
   cda sync                   Full re-ingest from disk (rebuilds entire DB)
   cda reconstruct            Re-run reconstruction and FTS rebuild only
@@ -79,6 +80,14 @@ import click
 
 # Ensure runtime dirs exist on every CLI invocation
 ensure_dirs()
+
+
+def _pmf_warn_if_not_installed():
+    """Emit a one-time advisory if the LaunchAgent is not registered."""
+    if not plist_path().exists():
+        click.echo(yellow("  Note: LaunchAgent not installed — services won't auto-start on login."))
+        click.echo(yellow("        Run `cda setup` to register, or `cda pmf install` to add just the plist."))
+
 
 kernel = PMFKernel()
 
@@ -408,7 +417,8 @@ def _ui_is_running():
 @click.option("--port", default=10001, show_default=True, help="Local port for the web UI")
 @click.option("--no-browser", "no_browser", is_flag=True, default=False, help="Don't open browser automatically")
 def ui_start(host, port, no_browser):
-    """Start the web UI as a background service."""
+    """Start the web UI as a background service (via PMF kernel)."""
+    _pmf_warn_if_not_installed()
     try:
         result = kernel.start_service("ui", options={"host": host, "port": port})
         url = f"http://{host}:{port}"
@@ -788,10 +798,11 @@ def watch():
 
 @watch.command("start")
 def watch_start():
-    """Start the live sync watcher daemon."""
+    """Start the live sync watcher daemon (via PMF kernel)."""
+    _pmf_warn_if_not_installed()
     try:
         result = kernel.start_service("watcher")
-        click.echo(green(f"  Watcher started pid={result['pid']}"))
+        click.echo(green(f"  Watcher started  pid={result['pid']}  (via PMF)"))
     except PMFKernelError as exc:
         click.echo(red(f"  {exc}"))
 
@@ -2644,6 +2655,194 @@ def check(as_json, fail_fast):
         click.echo(f"  {red(bold(f'{len(failed)} check(s) failed:'))} {', '.join(failed)}")
     click.echo()
     sys.exit(0 if passed_all else 1)
+
+
+# ─────────────────────────────────────────────
+# SETUP
+# ─────────────────────────────────────────────
+
+@cli.command("setup")
+@click.option("--skip-sync", "skip_sync", is_flag=True, default=False,
+              help="Skip initial data ingest (run `cda sync` manually later)")
+@click.option("--no-browser", "no_browser", is_flag=True, default=False,
+              help="Don't open browser when the web UI starts")
+def setup(skip_sync, no_browser):
+    """
+    Full onboarding in four steps: init → pmf install → sync → up.
+
+    \b
+    Run this once after `pip install code-data-ark`:
+
+        cda setup
+
+    \b
+    What each step does:
+      1. Init    — create ~/.cda/ directory tree, validate VS Code data path
+      2. Install — register a macOS LaunchAgent so CDA starts on every login
+      3. Sync    — ingest all VS Code + Copilot session data into cda.db
+      4. Up      — start the watcher daemon and web UI via PMF, open browser
+
+    All processes are managed by the PMF kernel. The LaunchAgent calls
+    `cda pmf up` on every login — no manual interaction needed after setup.
+    """
+    from cda.kernel.paths import (
+        CDA_HOME, DATA_DIR, RUN_DIR, LOG_DIR, QUEUE_DIR,
+        PMF_DIR, PMF_LOG_DIR, CONFIG_DIR, POLICY_FILE,
+    )
+    import os as _os
+
+    W = 52
+    BAR = "═" * W
+    bar = "─" * W
+    host, port = "127.0.0.1", 10001
+    url = f"http://{host}:{port}"
+
+    click.echo()
+    click.echo(bold(BAR))
+    click.echo(bold("  Code Data Ark — setup"))
+    click.echo(bold(BAR))
+    click.echo()
+    click.echo(dim("  Four steps to a fully operational CDA installation:"))
+    click.echo(dim(f"    1. Init    — create {CDA_HOME}"))
+    click.echo(dim("    2. Install — register macOS LaunchAgent (auto-start on login)"))
+    click.echo(dim("    3. Sync    — first-run data ingest") + (dim("  [skipped]") if skip_sync else ""))
+    click.echo(dim("    4. Up      — start watcher + web UI via PMF, open browser"))
+    click.echo()
+
+    # ── Step 1: Init ─────────────────────────────────────────────
+    click.echo(bold(bar))
+    click.echo(bold("  Step 1/4 — Init"))
+    click.echo(bold(bar))
+    click.echo()
+
+    dirs = [DATA_DIR, RUN_DIR, LOG_DIR, QUEUE_DIR, PMF_DIR, PMF_LOG_DIR, CONFIG_DIR]
+    for d in dirs:
+        d.mkdir(parents=True, exist_ok=True)
+        click.echo(f"    {green('✓')}  {d}")
+
+    if not POLICY_FILE.exists():
+        POLICY_FILE.write_text("# CDA access policy\n# ALLOW <pattern>\n# DENY  <pattern>\n")
+
+    vscode_data = Path(_os.environ.get(
+        "VSCODE_DATA_DIR",
+        Path.home() / "Library/Application Support/Code/User",
+    ))
+    if vscode_data.exists():
+        click.echo(f"    {green('✓')}  VS Code data dir found")
+    else:
+        click.echo(f"    {yellow('⚠')}  VS Code data dir not found: {vscode_data}")
+        click.echo(yellow("         Set VSCODE_DATA_DIR if your data is elsewhere."))
+
+    click.echo()
+    click.echo(f"    {green('✓')}  CDA_HOME: {CDA_HOME}")
+    click.echo()
+
+    # ── Step 2: PMF install ──────────────────────────────────────
+    click.echo(bold(bar))
+    click.echo(bold("  Step 2/4 — PMF install"))
+    click.echo(bold(bar))
+    click.echo()
+    click.echo(dim("  The LaunchAgent registers CDA with macOS launchd. On every login,"))
+    click.echo(dim("  launchd calls `cda pmf up` which starts the watcher daemon and"))
+    click.echo(dim("  web UI via the PMF kernel — no terminal required."))
+    click.echo()
+
+    pmf_ok = False
+    try:
+        target = install_launchd(CDA_HOME)
+        click.echo(f"    {green('✓')}  LaunchAgent: {target}")
+        click.echo(f"    {green('✓')}  Loaded — CDA will start automatically on every login")
+        pmf_ok = True
+    except PMFKernelError as exc:
+        click.echo(f"    {yellow('⚠')}  LaunchAgent registration failed: {exc}")
+        click.echo(yellow("         Ensure `cda` is on PATH, then run `cda pmf install` to retry."))
+    click.echo()
+
+    # ── Step 3: Sync ─────────────────────────────────────────────
+    click.echo(bold(bar))
+    click.echo(bold("  Step 3/4 — Sync"))
+    click.echo(bold(bar))
+    click.echo()
+
+    if skip_sync:
+        click.echo(f"    {yellow('↳')}  Skipped (--skip-sync).  Run `cda sync` when ready.")
+        click.echo()
+    else:
+        click.echo(dim("  Scanning VS Code workspaceStorage and building cda.db."))
+        click.echo(dim("  First run may take several minutes depending on session history."))
+        click.echo()
+
+        sync_failed = False
+        stages = [
+            ("cda.pipeline.ingest",      "Ingest       — reading VS Code storage"),
+            ("cda.pipeline.reconstruct",  "Reconstruct  — building exchanges + FTS"),
+            ("cda.pipeline.extract",      "Extract      — behavioral signals + tokens"),
+            ("cda.pipeline.embed",        "Embed        — semantic intelligence layer"),
+        ]
+        for module, label in stages:
+            click.echo(yellow(f"    → {label}"))
+            result = subprocess.run([sys.executable, "-m", module], capture_output=False)
+            if result.returncode != 0:
+                click.echo(red("    ✗  Failed — sync incomplete"))
+                sync_failed = True
+                break
+            click.echo(green("    ✓  Done"))
+            click.echo()
+
+        if not sync_failed:
+            click.echo(green("    ✓  Sync complete"))
+            click.echo()
+
+    # ── Step 4: Up ───────────────────────────────────────────────
+    click.echo(bold(bar))
+    click.echo(bold("  Step 4/4 — Up"))
+    click.echo(bold(bar))
+    click.echo()
+    click.echo(dim("  Starting all services through the PMF kernel."))
+    click.echo(dim("  Each process is tracked, logged, and restartable via `cda pmf`."))
+    click.echo()
+
+    for svc_id, opts, label in [
+        ("watcher", None,                         "Watcher daemon"),
+        ("ui",      {"host": host, "port": port}, f"Web UI         →  {url}"),
+    ]:
+        try:
+            result = kernel.start_service(svc_id, options=opts)
+            click.echo(f"    {green('✓')}  {label}   pid={result['pid']}")
+        except PMFKernelError as exc:
+            msg = str(exc)
+            if "already running" in msg.lower():
+                click.echo(f"    {green('✓')}  {label}   (already running)")
+            else:
+                click.echo(f"    {yellow('⚠')}  {label}   {msg}")
+
+    click.echo()
+
+    if not no_browser:
+        click.echo(dim("  Waiting for web UI..."))
+        opened = wait_for_port_and_open_browser(url, host, port)
+        if opened:
+            click.echo(f"    {green('✓')}  Browser opened: {url}")
+        else:
+            click.echo(f"    {yellow('⚠')}  Server not responding yet — visit {url} manually")
+        click.echo()
+
+    # ── Done ─────────────────────────────────────────────────────
+    click.echo(bold(BAR))
+    click.echo(bold("  Setup complete."))
+    click.echo(bold(BAR))
+    click.echo()
+    if pmf_ok:
+        click.echo(dim("  CDA will start automatically on every login via launchd."))
+    click.echo(dim("  The watcher daemon stays in sync with your VS Code sessions."))
+    click.echo(dim(f"  Visit {url} any time to explore your data."))
+    click.echo()
+    click.echo(dim("  Useful commands:"))
+    click.echo(dim("    cda check          — full system health diagnostic"))
+    click.echo(dim("    cda sync           — re-ingest after significant new session activity"))
+    click.echo(dim("    cda pmf services   — view running services and their status"))
+    click.echo(dim("    cda pmf uninstall  — remove auto-start LaunchAgent registration"))
+    click.echo()
 
 
 # ─────────────────────────────────────────────

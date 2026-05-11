@@ -47,7 +47,7 @@ class TestVersion(unittest.TestCase):
     @patch("cda.selfcheck.subprocess.run")
     def test_correct(self, mock_run):
         from cda import selfcheck
-        selfcheck.PROJECT_DIR = self.tmp
+        selfcheck.SOURCE_DIR = self.tmp
         mock_run.return_value = MagicMock(returncode=0, stdout=str(self.tmp) + "\n")
         r = selfcheck.check_install_path()
         self.assertTrue(r["passed"])
@@ -55,7 +55,7 @@ class TestVersion(unittest.TestCase):
     @patch("cda.selfcheck.subprocess.run")
     def test_wrong(self, mock_run):
         from cda import selfcheck
-        selfcheck.PROJECT_DIR = self.tmp
+        selfcheck.SOURCE_DIR = self.tmp
         mock_run.return_value = MagicMock(returncode=0, stdout="/other/path\n")
         r = selfcheck.check_install_path()
         self.assertFalse(r["passed"])

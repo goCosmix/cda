@@ -28,13 +28,14 @@ import sys
 from pathlib import Path
 
 # ── paths the system knows about itself ─────────────────────────────────────
-PACKAGE_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = PACKAGE_DIR.parent.parent
-DATA_DIR    = PROJECT_DIR / "data"
-DB_PATH     = DATA_DIR / "vscode-ark.db"
-PID_FILE    = PROJECT_DIR / "watcher.pid"
-QUEUE_DIR   = DATA_DIR / "watcher-queue"
-VERSION_FILE = PROJECT_DIR / "VERSION"
+PACKAGE_DIR  = Path(__file__).resolve().parent
+SOURCE_DIR   = PACKAGE_DIR.parent          # source/  — tracked repo root
+PROJECT_DIR  = PACKAGE_DIR.parent.parent   # repo root — where layers live
+DATA_DIR     = PROJECT_DIR / "data"
+DB_PATH      = DATA_DIR / "vscode-ark.db"
+PID_FILE     = DATA_DIR / "watcher.pid"
+QUEUE_DIR    = DATA_DIR / "watcher-queue"
+VERSION_FILE = SOURCE_DIR / "VERSION"
 
 REQUIRED_TABLES = [
     "sessions", "exchanges", "tool_calls", "vfs", "workspaces",
@@ -91,16 +92,16 @@ def check_install_path():
         result = subprocess.run(
             [sys.executable, "-c",
              "import cda, pathlib; "
-             "print(pathlib.Path(cda.__file__).parent.parent.parent.resolve())"],
+             "print(pathlib.Path(cda.__file__).parent.parent.resolve())"],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
             return _fail("install_path", "cda not importable — editable install broken")
         install_dir = Path(result.stdout.strip()).resolve()
-        if install_dir == PROJECT_DIR:
+        if install_dir == SOURCE_DIR:
             return _ok("install_path", f"editable install → {install_dir}")
         return _fail("install_path",
-            f"editable install points to wrong path: {install_dir} (expected {PROJECT_DIR})")
+            f"editable install points to wrong path: {install_dir} (expected {SOURCE_DIR})")
     except Exception as exc:
         return _fail("install_path", f"install_path check error: {exc}")
 
@@ -226,7 +227,7 @@ def check_data_gitignored():
         )
         if result.returncode == 0:
             return _ok("data_gitignored", "data/ is gitignored")
-        return _fail("data_gitignored", "data/ is NOT gitignored — sensitive data at risk")
+        return _fail("data_gitignored", "data/ is NOT gitignored — sensitive data at risk")  # noqa: E501
     except FileNotFoundError:
         return _fail("data_gitignored", "git not available")
 

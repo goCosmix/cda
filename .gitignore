@@ -232,7 +232,6 @@ dmypy.json
 pmf_runtime.json
 *.log
 watcher-queue/
-.DS_Store.venv/
 .venv/
 data/
 run/

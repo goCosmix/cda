@@ -25,13 +25,13 @@ jobs:
         pip install -e ".[dev]"
     - name: Lint with flake8
       run: |
-        flake8 vscode_ark tests
+        flake8 cda tests
     - name: Type check with mypy
       run: |
-        mypy vscode_ark
+        mypy cda
     - name: Test with pytest
       run: |
-        pytest tests/ -v --cov=vscode_ark --cov-report=xml
+        pytest tests/ -v --cov=cda --cov-report=xml
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:

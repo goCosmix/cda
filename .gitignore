@@ -1,56 +1,24 @@
+# Build outputs
+dist/
+build/
+*.egg-info/
+
 # Python
 __pycache__/
 *.py[cod]
-*.so
-*.egg-info/
-*.egg
-MANIFEST
-build/
-dist/
-.eggs/
-.installed.cfg
+*.pyo
 
-# Testing
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-.tox/
-.nox/
-.hypothesis/
-
-# Type checking
-.mypy_cache/
-.dmypy.json
-dmypy.json
-.pyre/
-
-# Environments
+# Environment
+.env
 .venv/
 venv/
 env/
-ENV/
 
-# macOS
+# Test / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Editors
 .DS_Store
-._*
-
-# VS Code
-.vscode/
-
-# Project layers (host-only runtime state)
-local/
-control/
-
-# Database files
-*.db
-*.db-shm
-*.db-wal
-
-# Logs and pids
-*.log
-*.pid
-
-# Misc
-pmf_runtime.json

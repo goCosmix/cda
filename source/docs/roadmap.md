@@ -11,9 +11,9 @@ VS Code Ark is the local observability and intelligence layer for Copilot Chat s
 - Publish and stabilize the PyPI package as `vscode-ark`.
 - Harden `cda` CLI workflows: install, sync, watch, embed, and UI lifecycle commands.
 - Ship the background web UI service (`cda ui start/stop/status`) and foreground dashboard (`cda serve`).
-- Clean up documentation and install instructions across `README.md`, `CONTRIBUTING.md`, and `docs/ARCHITECTURE.md`.
+- Clean up documentation and install instructions across `readme.md`, `contributing.md`, and `docs/architecture.md`.
 - Ensure the watcher daemon and ingest pipeline work reliably on supported VS Code data paths.
-- Validate packaging metadata and version consistency in `pyproject.toml` and `setup.py`.
+- Validate packaging metadata and version consistency in `pyproject.toml`.
 
 ## Mid-Term Initiatives (0.2.x)
 
@@ -23,7 +23,6 @@ VS Code Ark is the local observability and intelligence layer for Copilot Chat s
 - Add documented export flows for JSON, JSONL, and text outputs.
 - Strengthen development hygiene with tests, linting, formatting, and CI-focused docs.
 - Add policy filtering and access control guidance for workspace-level data selection.
-- Build the PMF Ebbed Kernel as an embedded runtime manager for Ark services, with UI monitoring and local service control.
 
 ## Long-Term Ambitions (1.0+)
 
@@ -38,17 +37,16 @@ VS Code Ark is the local observability and intelligence layer for Copilot Chat s
 - `v0.1.0` delivered the core VS Code Ark pipeline: ingest, reconstruct, extract, watcher, CLI, search, export, packaging, and documentation.
 - `v0.1.1` delivered the professional web UI session drawer, structured data panels, alert and tool-call tables, and complete package distribution of web UI assets.
 - `v0.1.2` delivered release automation, version sync tooling, packaging metadata consolidation, and documentation cleanup.
+- `v2.0.0` delivered the PMF Embedded Kernel for service lifecycle management, 3-layer repo structure (source/local/control), full package reorganization into pipeline/ui/kernel subpackages, and system-wide cleanup.
 
-## PMF Ebbed Kernel — Local Runtime Plan
+## PMF Embedded Kernel — Shipped in v2.0.0
 
-The PMF Ebbed Kernel is the planned embedded runtime layer for Ark. It is a lightweight, package-contained process management framework and monitoring surface that enables:
+The PMF Embedded Kernel is Ark's local embedded runtime layer. It is a lightweight, package-contained process management framework that provides:
 
 - Local lifecycle control for watcher, web UI, ingest, reconstruction, and embedding workflows.
 - Service health, PID/log management, and crash resilience.
 - A UI-visible runtime dashboard, with manual start/stop/restart actions.
 - A lightweight local bus surface for action and alert events.
-
-This is intentionally not the full PMF federation control plane; it is an embedded Ark runtime that can later be mapped into federation concepts when the project grows.
 
 ## Transferred backlog from changelog
 
@@ -68,9 +66,9 @@ The following items were still listed as `Unreleased` in `CHANGELOG.md` and have
 
 ## Milestones
 
-- `v0.1.2`: Documented install, CLI, and web UI service parity.
-- `v0.2.0`: Enhanced semantic search, better UX, and broader analytics coverage.
-- `v1.0.0`: Stable release with polished dashboards, scalable ingestion, and strong local observability.
+- `v2.0.0`: PMF Embedded Kernel, 3-layer repo architecture, package reorganization. ✓
+- `v2.1.0`: Enhanced semantic search, better UX, and broader analytics coverage.
+- `v3.0.0`: Stable release with polished dashboards, scalable ingestion, and strong local observability.
 
 ## Metrics for Success
 

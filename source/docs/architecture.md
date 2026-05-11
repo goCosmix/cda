@@ -13,7 +13,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                        ▼
         ┌──────────────────────────┐
         │   INGEST STAGE           │
-        │  (vscode_ark/ingest.py)   │
+        │  (cda/pipeline/ingest.py)   │
         │                          │
         │ - Parse storage files    │
         │ - Gzip compress blobs    │
@@ -34,7 +34,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                    ▼
         ┌──────────────────────────┐
         │  RECONSTRUCT STAGE       │
-        │  (vscode_ark/reconstruct.py)
+        │  (cda/pipeline/reconstruct.py)
         │                          │
         │ - Parse exchanges        │
         │ - Link tool calls        │
@@ -44,7 +44,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                    │
         ┌──────────▼──────────┐
         │   EMBED STAGE        │
-        │   (vscode_ark/embed.py)
+        │   (cda/pipeline/embed.py)
         │                     │
         │ - Build miniLM vectors
         │ - Generate session summaries
@@ -62,7 +62,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                    ▼
         ┌──────────────────────────┐
         │   EXTRACT STAGE          │
-        │   (vscode_ark/extract.py)
+        │   (cda/pipeline/extract.py)
         │                          │
         │ - Analyze signals        │
         │ - Compute heat scores    │
@@ -82,7 +82,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
                    ▼
         ┌──────────────────────────┐
         │   LIVE MONITORING        │
-        │   (vscode_ark/watcher.py) │
+        │   (cda/pipeline/watcher.py) │
         │                          │
         │ - Watch file changes     │
         │ - Queue operations       │
@@ -111,9 +111,9 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
         └──────────────────────────┘
 ```
 
-## PMF Ebbed Kernel — Embedded Runtime Management
+## PMF Embedded Kernel — Embedded Runtime Management
 
-The PMF Ebbed Kernel is Ark's local embedded runtime layer. It is not the full federation control plane; instead, it is a package-embedded process management framework that supervises Ark services such as the watcher daemon, web UI, ingest pipeline, reconstruction, and semantic embedding tasks.
+The PMF Embedded Kernel is Ark's local embedded runtime layer. It is not the full federation control plane; instead, it is a package-embedded process management framework that supervises Ark services such as the watcher daemon, web UI, ingest pipeline, reconstruction, and semantic embedding tasks.
 
 Key PMF Lite responsibilities:
 - Manage service lifecycle with PID files, background subprocesses, and log files.
@@ -366,7 +366,7 @@ cda
 
 ### Local Web UI
 
-- The local dashboard is implemented in `vscode_ark/web.py`.
+- The local dashboard is implemented in `cda/ui/web.py`.
 - `cda serve` runs the web server in the foreground on port `10001` by default.
 - `cda ui start` launches the same service as a background daemon using a PID file and log file.
 - `cda ui stop` and `cda ui status` manage the lifecycle of the background UI.

@@ -15,14 +15,14 @@ We welcome contributions! This document provides guidelines and instructions for
 
 ```bash
 git clone https://github.com/goCosmix/vscode-ark.git
-cd vscode-ark
+cd vscode-ark/source
 ```
 
 ### Setup Development Environment
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -e ".[dev]"
+# or
 make install-dev
 ```
 
@@ -165,36 +165,64 @@ Understanding the codebase:
 
 ```
 vscode-ark/
-├── vscode_ark/          # Main package
-│   ├── cli.py          # Command-line interface (1800+ lines)
-│   └── __init__.py     # Package metadata
-├── ingest.py           # VS Code data ingestion (~200 lines)
-├── reconstruct.py      # Conversation processing (~150 lines)
-├── extract.py          # Signal analysis (~200 lines)
-├── watcher.py          # Live monitoring (~250 lines)
-├── audit.py            # Analysis utilities (~100 lines)
-├── parse_edits.py      # Edit parsing (~150 lines)
-├── tests/              # Test suite
-├── docs/               # Documentation
-└── .github/workflows/  # CI/CD configuration
+├── .gitignore
+├── source/                  # all tracked code lives here
+│   ├── cda/                 # Python package
+│   │   ├── __init__.py
+│   │   ├── pipeline/        # data pipeline stages
+│   │   │   ├── ingest.py
+│   │   │   ├── reconstruct.py
+│   │   │   ├── extract.py
+│   │   │   ├── embed.py
+│   │   │   ├── watcher.py
+│   │   │   └── parse_edits.py
+│   │   ├── ui/              # interfaces
+│   │   │   ├── cli.py
+│   │   │   └── web.py
+│   │   └── kernel/          # system management
+│   │       ├── pmf_kernel.py
+│   │       └── selfcheck.py
+│   ├── bin/
+│   │   └── release.py       # version sync and release automation
+│   ├── tests/
+│   ├── docs/
+│   ├── pyproject.toml
+│   └── makefile
+├── local/               # runtime state (gitignored)
+│   ├── data/            # vscode-ark.db
+│   ├── logs/
+│   ├── queue/
+│   ├── run/             # pid files
+│   ├── config/
+│   └── pmf/             # pmf runtime state
+└── control/             # management artifacts (gitignored)
+    ├── data/            # control.db
+    ├── scripts/         # seed.py
+    ├── audit/
+    └── scan/
 ```
 
 ## Key Components
 
-### CLI (vscode_ark/cli.py)
+### CLI (`cda/ui/cli.py`)
 - Entry point for command-line interface
 - Uses Click framework for command routing
-- Implements 25+ commands for analysis and management
-- ~1800 lines of code
+- Implements 40+ commands for analysis and management
 
 ### Data Pipeline
-- **ingest.py**: Reads VS Code storage, creates VFS blobs
-- **reconstruct.py**: Structures raw data into conversations
-- **extract.py**: Analyzes patterns and computes metrics
+- **pipeline/ingest.py**: Reads VS Code storage, creates VFS blobs
+- **pipeline/reconstruct.py**: Structures raw data into conversations
+- **pipeline/extract.py**: Analyzes patterns and computes metrics
+- **pipeline/embed.py**: Semantic embeddings, session summaries, anomaly alerts
 
 ### Live Monitoring
-- **watcher.py**: Monitors file changes, maintains queue
-- **parse_edits.py**: Parses edit session information
+- **pipeline/watcher.py**: Monitors file changes, maintains queue
+- **pipeline/parse_edits.py**: Parses edit session information
+
+### System Management
+- **kernel/pmf_kernel.py**: Service lifecycle, PID/log management, runtime state
+- **kernel/selfcheck.py**: System health checks and install validation
+- **ui/web.py**: Browser dashboard for all CLI features
 
 ## Testing Strategy
 
@@ -252,13 +280,10 @@ python -m pytest tests/test_basic.py::test_signal_patterns_import -v
 
 ## Release Process
 
-1. Update version in `vscode_ark/__init__.py` and `pyproject.toml`
-2. Update CHANGELOG.md with release notes
-3. Create release commit: `git commit -m "Release v0.1.0"`
-4. Create git tag: `git tag v0.1.0`
-5. Push changes: `git push && git push --tags`
-6. Build package: `make build`
-7. Publish: `make publish`
+1. Set new version: `python bin/release.py --set-version X.Y.Z`
+2. Update `changelog.md` with release notes
+3. Build and tag: `python bin/release.py --build --tag --push`
+4. Publish: `python bin/release.py --publish`
 
 ## Additional Resources
 

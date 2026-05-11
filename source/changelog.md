@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-05-11
+
+### Changed
+- **3-layer repo architecture**: repo root now has `source/` (tracked code), `local/` (runtime state), `control/` (management artifacts) — `local/` and `control/` are host-only and gitignored
+- **Package reorganization**: `cda/` split into `pipeline/` (ingest, reconstruct, extract, embed, watcher, parse_edits), `ui/` (cli, web), `kernel/` (pmf_kernel, selfcheck) subpackages
+- **Lowercase filenames**: all doc/meta filenames normalized to lowercase throughout `source/`
+- `local/data/vscode-ark.db` is the canonical DB path; all module path depths updated
+- Entry point updated: `cda.cli:main` → `cda.ui.cli:main`
+
+### Fixed
+- `release.py`: removed stale `SETUP_FILE` reference (setup.py was deleted); `sync_version` no longer fails on missing file
+- `ci.yml`: added `working-directory: source` to all jobs so lint/test/build run from the correct root
+- `pyproject.toml`: moved mypy options out of `[tool.flake8]` where they were silently ignored into `[tool.mypy]`
+- `.gitignore`: replaced double-template bloat with a clean minimal project-specific ignore file
+- Removed `pypi.py` from `cda/` package — dead code, not imported, belongs in the pypi system
+- Fixed stale `DB_PATH` in `extract`, `embed`, `reconstruct`, `parse_edits` (were pointing to wrong directory)
+
 ## [2.0.0] - 2026-05-10
 
 ### Added

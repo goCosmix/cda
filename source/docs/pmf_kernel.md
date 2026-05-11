@@ -1,8 +1,8 @@
-# PMF Ebbed Kernel
+# PMF Embedded Kernel
 
 ## Purpose
 
-The PMF Ebbed Kernel is Ark's embedded process management framework. It sits between the application and the host environment and provides a local runtime kernel for Ark services.
+The PMF Embedded Kernel is Ark's embedded process management framework. It sits between the application and the host environment and provides a local runtime kernel for Ark services.
 
 It is intentionally:
 
@@ -51,7 +51,7 @@ Each service is defined by:
 
 ## Runtime state
 
-Runtime state is stored in `pmf_runtime.json` at the project root and is intentionally ignored by source control.
+Runtime state is stored in `local/pmf/runtime.json` and is intentionally ignored by source control.
 
 Each service state contains:
 
@@ -88,7 +88,7 @@ Planned API surface:
 
 ## Future extension
 
-The PMF Ebbed Kernel is designed to grow into a more general embedded app kernel.
+The PMF Embedded Kernel is designed to grow into a more general embedded app kernel.
 
 Future work includes:
 

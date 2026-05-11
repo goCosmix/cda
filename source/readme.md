@@ -51,7 +51,7 @@ pipx install vscode-ark
 
 ```bash
 git clone https://github.com/goCosmix/vscode-ark.git
-cd vscode-ark
+cd vscode-ark/source
 pip install -e .
 ```
 
@@ -128,17 +128,17 @@ The web UI includes:
 ## 📦 Package and Release
 
 - Published on PyPI as `vscode-ark`
-- Current release version: `0.1.2`
+- Current release version: `2.0.0`
 - CLI entry point: `cda`
 - License: MIT
 
 ## 🛣 Roadmap
 
-See `docs/ROADMAP.md` for product direction, milestone planning, and release priorities.
+See `docs/roadmap.md` for product direction, milestone planning, and release priorities.
 
 ## 🤝 Contributing
 
-See `CONTRIBUTING.md` for development setup, test guidance, and PR workflow.
+See `contributing.md` for development setup, test guidance, and PR workflow.
 
 ## 📜 License
 
@@ -176,11 +176,15 @@ VS Code Storage → ingest.py → vfs + sessions + transcripts
 
 | Component | Purpose | Key Features |
 |-----------|---------|--------------|
-| **ingest.py** | Data ingestion | VFS storage, gzip compression, session metadata |
-| **reconstruct.py** | Conversation processing | Exchange threading, tool call linking, FTS indexing |
-| **extract.py** | Signal analysis | Behavioral pattern recognition, heat scoring, token accounting |
-| **watcher.py** | Live monitoring | File watching, incremental updates, crash recovery |
-| **cda** | Query interface | 25+ commands, policy filtering, rich formatting |
+| **pipeline/ingest.py** | Data ingestion | VFS storage, gzip compression, session metadata |
+| **pipeline/reconstruct.py** | Conversation processing | Exchange threading, tool call linking, FTS indexing |
+| **pipeline/extract.py** | Signal analysis | Behavioral pattern recognition, heat scoring, token accounting |
+| **pipeline/watcher.py** | Live monitoring | File watching, incremental updates, crash recovery |
+| **pipeline/embed.py** | Semantic intelligence | Embeddings, session summaries, anomaly alerts |
+| **kernel/pmf_kernel.py** | Service management | Daemon lifecycle, PID/log tracking, runtime state |
+| **kernel/selfcheck.py** | System diagnostics | Health checks, install validation, DB integrity |
+| **ui/cli.py** | CLI entry point | 40+ commands, policy filtering, rich formatting |
+| **ui/web.py** | Web dashboard | Browser UI for all CLI features, service control |
 
 ### Database Schema
 
@@ -382,20 +386,28 @@ make publish           # Publish to PyPI (requires credentials)
 
 ```
 vscode-ark/
-├── vscode_ark/           # Main package
-│   ├── __init__.py
-│   └── cli.py           # Command-line interface
-├── scripts/             # Utility scripts
-│   ├── ingest.py        # Data ingestion
-│   ├── reconstruct.py   # Conversation processing
-│   ├── extract.py       # Signal analysis
-│   └── watcher.py       # Live monitoring
-├── tests/               # Test suite
-├── docs/                # Documentation
-├── pyproject.toml       # Package configuration
-├── setup.py            # Legacy setup
-├── Makefile            # Development tasks
-└── README.md           # This file
+├── .gitignore
+├── source/                  # all tracked code (pushed to git)
+│   ├── cda/
+│   │   ├── pipeline/        # ingest, reconstruct, extract, embed, watcher, parse_edits
+│   │   ├── ui/              # cli, web
+│   │   └── kernel/          # pmf_kernel, selfcheck
+│   ├── bin/release.py
+│   ├── tests/
+│   ├── docs/
+│   └── pyproject.toml
+├── local/               # runtime state (gitignored, host-only)
+│   ├── data/            # vscode-ark.db
+│   ├── logs/
+│   ├── queue/
+│   ├── run/
+│   ├── config/
+│   └── pmf/
+└── control/             # management artifacts (gitignored, host-only)
+    ├── data/            # control.db
+    ├── scripts/
+    ├── audit/
+    └── scan/
 ```
 
 ## 🤝 Contributing

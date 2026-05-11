@@ -187,6 +187,7 @@ def reconstruct_session(conn, session_id: str, workspace_id: str) -> int:
         elif etype == "assistant.message":
             if current_turn is None:
                 new_turn()
+            assert current_turn is not None
             current_turn["messages"].append({
                 "message_id":   data.get("messageId"),
                 "content":      data.get("content", ""),
@@ -198,6 +199,7 @@ def reconstruct_session(conn, session_id: str, workspace_id: str) -> int:
         elif etype == "tool.execution_start":
             if current_turn is None:
                 new_turn()
+            assert current_turn is not None
             tool_call_id = data.get("toolCallId", "")
             current_turn["tool_calls"].append({
                 "toolCallId": tool_call_id,

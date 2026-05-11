@@ -42,7 +42,7 @@ class ServiceSpec:
     env: Optional[Dict[str, str]] = None
     pid_file: Optional[Path] = None
     log_file: Optional[Path] = None
-    allowed_actions: List[str] = None
+    allowed_actions: Optional[List[str]] = None
 
     def build_command(self, options: Dict[str, str] = None) -> List[str]:
         if self.service_id == "ui":

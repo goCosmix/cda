@@ -12,6 +12,7 @@ import time
 import traceback
 import subprocess
 import socket
+from typing import Any, Dict
 from pathlib import Path
 from datetime import datetime
 from wsgiref.simple_server import make_server, WSGIServer
@@ -1378,7 +1379,7 @@ def get_tokens(session_id=None):
 # ─────────────────────────────────────────────
 
 
-ACTION_STATE = {}
+ACTION_STATE: Dict[str, Any] = {}
 ACTION_LOCK = threading.Lock()
 
 

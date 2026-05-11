@@ -78,11 +78,6 @@ line_length = 100
 python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
-
-[tool.flake8]
-max-line-length = 100
-extend-ignore = ["E203", "W503"]
-exclude = [".git", "__pycache__", "build", "dist", ".venv", "venv", "env"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
@@ -93,6 +88,11 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", "build", "dist", ".venv", "venv", "env"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -7,7 +7,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = ROOT / "version"
 PYPROJECT_FILE = ROOT / "pyproject.toml"
-SETUP_FILE = ROOT / "setup.py"
 INIT_FILE = ROOT / "cda" / "__init__.py"
 
 VERSION_PATTERN = r"\d+\.\d+\.\d+"
@@ -35,7 +34,6 @@ def replace_in_file(path: Path, pattern: str, replacement: str, multiline: bool 
 
 def sync_version(version: str):
     replace_in_file(PYPROJECT_FILE, r'^(version\s*=\s*")' + VERSION_PATTERN + r'(")', rf'\g<1>{version}\g<2>', multiline=True)
-    replace_in_file(SETUP_FILE, r'^(\s*version\s*=\s*")' + VERSION_PATTERN + r'(",)', rf'\g<1>{version}\g<2>', multiline=True)
     replace_in_file(INIT_FILE, r'^(\s*__version__\s*=\s*")' + VERSION_PATTERN + r'(")', rf'\g<1>{version}\g<2>', multiline=True)
 
 

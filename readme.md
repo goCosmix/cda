@@ -1,19 +1,30 @@
 # VS Code Ark
 
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/vscode-ark.svg)](https://pypi.org/project/vscode-ark)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A complete analysis system for VS Code + Copilot Chat sessions that turns raw editor activity into behavioral signals, semantic intelligence, and a local web dashboard.
+**VS Code Ark** is a local observability and intelligence platform for VS Code + GitHub Copilot Chat sessions. It ingests everything VS Code writes to disk — transcripts, tool calls, VFS blobs, workspace state — and runs a multi-stage pipeline to turn that raw activity into structured data you can actually reason about.
 
-## ✨ Key Benefits
+The core insight is that your chat history is not just logs. It carries behavioral signals: moments you corrected the agent, redirected it, expressed frustration, or confirmed that something finally worked. Ark extracts those signals, scores session quality with a heat model, and surfaces the patterns — so you can understand how you work with AI, not just what was said.
 
-- **Behavioral signal intelligence** for Copilot Chat sessions.
-- **Heat scoring** to surface friction, recovery points, and session quality.
-- **Semantic search** across session transcripts, code symbols, and tool calls.
-- **Background web UI** with structured panels, alerts, and session drilldown.
-- **Live watcher daemon** to keep session analytics current.
-- **Exportable data** for JSON, JSONL, and text workflows.
+On top of that signal layer, Ark builds a semantic intelligence layer: embeddings over all your sessions, full-text and code-symbol search, anomaly alerts, session summaries, and related-session discovery. All of this lives in a local SQLite database, queryable via a 40+ command CLI or a background web dashboard.
+
+The runtime is managed by an embedded process kernel (PMF) that supervises the watcher daemon, web UI, and pipeline tasks as background services — giving the whole system a lifecycle you can control without touching a process manager.
+
+**In short**: point it at your VS Code data directory, run `cda sync`, and you have a searchable, annotated, semantically indexed record of every Copilot session you've ever had — with behavioral scores and anomaly detection included.
+
+## ✨ Key Capabilities
+
+- **Multi-stage pipeline**: ingest → reconstruct → extract → embed — each stage enriches the data further
+- **Behavioral signal detection**: 200+ keyword patterns across 6 signal types; frustration, correction, recovery
+- **Heat scoring**: weighted session quality score (0–100) that tracks arc from friction to resolution
+- **Semantic search**: miniLM embeddings over all sessions for similarity, related-session discovery, and topic clustering
+- **Full-text search**: FTS5 index over all exchanges, tool calls, and code symbols
+- **Live watcher daemon**: monitors VS Code directories, queues changes, replays on crash
+- **Background web UI**: session drilldown, signal summaries, alert views, tool-call detail, VFS inspection
+- **PMF Embedded Kernel**: local service lifecycle management — start, stop, restart, status for all Ark daemons
+- **Export workflows**: JSON, JSONL, and plain-text session export
 
 ## 📋 Table of Contents
 
@@ -128,7 +139,7 @@ The web UI includes:
 ## 📦 Package and Release
 
 - Published on PyPI as `vscode-ark`
-- Current release version: `2.0.0`
+- Current release version: `2.0.2`
 - CLI entry point: `cda`
 - License: MIT
 
@@ -358,28 +369,26 @@ ALLOW *.py
 ### Setup Development Environment
 
 ```bash
-make install-dev
+pip install -e ".[dev]"
 ```
 
 ### Running Tests
 
 ```bash
-make test              # Run test suite
-make test-cov          # Run with coverage report
+pytest tests/ -q
 ```
 
 ### Code Quality
 
 ```bash
-make lint              # Run flake8 and mypy
-make format            # Format with black and isort
+flake8 cda tests
+mypy cda
 ```
 
 ### Building
 
 ```bash
-make build             # Build distribution packages
-make publish           # Publish to PyPI (requires credentials)
+python -m build
 ```
 
 ### Project Structure
@@ -423,11 +432,9 @@ vscode-ark/
 
 ### Development Guidelines
 
-- **Type Hints**: All functions should have type annotations
-- **Docstrings**: Comprehensive docstrings for public APIs
 - **Tests**: Unit tests for all new functionality
-- **Linting**: Code must pass flake8 and mypy checks
-- **Formatting**: Code must be formatted with black and isort
+- **Linting**: Code must pass `flake8` and `mypy` before pushing
+- **Versioning**: Keep `version`, `pyproject.toml`, and `changelog.md` in sync
 
 ## 📝 License
 

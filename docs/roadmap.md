@@ -6,31 +6,26 @@ This roadmap captures the product direction for VS Code Ark, with a focus on del
 
 VS Code Ark is the local observability and intelligence layer for Copilot Chat sessions. It should make session behavior easy to understand, surface friction, and provide rapid search and review for developers who want to improve AI-assisted workflows.
 
-## Near-Term Priorities (0.1.x)
+## Near-Term Priorities (2.0.x)
 
-- Publish and stabilize the PyPI package as `vscode-ark`.
-- Harden `cda` CLI workflows: install, sync, watch, embed, and UI lifecycle commands.
-- Ship the background web UI service (`cda ui start/stop/status`) and foreground dashboard (`cda serve`).
-- Clean up documentation and install instructions across `readme.md`, `contributing.md`, and `docs/architecture.md`.
-- Ensure the watcher daemon and ingest pipeline work reliably on supported VS Code data paths.
-- Validate packaging metadata and version consistency in `pyproject.toml`.
+- Stabilize `cda` CLI and watcher daemon reliability across VS Code data path changes.
+- Expand web UI session drilldown: richer alerts, recommendation panels, and tool-call inspection.
+- Improve semantic search quality: better embedding workflows and topic clustering.
+- Add documented export flows and onboarding guidance for first-time installs.
+- Harden CI and development hygiene: control-plane vet checks, audit-engine integration.
 
-## Mid-Term Initiatives (0.2.x)
+## Mid-Term Initiatives (2.1.x)
 
-- Expand behavioral signal coverage and heat scoring accuracy.
-- Improve semantic search and related-session discovery with better embedding workflows.
-- Add richer session drilldown in the web UI: alerts, recommendations, tool-call views, and code/VFS inspection.
-- Add documented export flows for JSON, JSONL, and text outputs.
-- Strengthen development hygiene with tests, linting, formatting, and CI-focused docs.
-- Add policy filtering and access control guidance for workspace-level data selection.
+- Streaming results for long-running queries and pipeline stages.
+- Stronger anomaly detection and recovery analytics as first-class insights.
+- Policy filtering and workspace-level access control improvements.
+- Broader source support: extend beyond VS Code/Copilot Chat to other editor session logs.
 
-## Long-Term Ambitions (1.0+)
+## Long-Term Ambitions (3.0+)
 
-- Support larger scale and advanced query performance through caching, optimized indices, and streaming results.
-- Add federation and external-node integration for distributed analysis.
-- Deliver anomaly detection and recovery analytics as first-class insights.
-- Expand source support beyond VS Code/Copilot Chat to a broader set of editor/session logs.
-- Build a polished project experience: onboarding docs, release notes, and packaged CLI workflows.
+- Federation and external-node integration for distributed analysis.
+- PMF full control-plane interoperability: map local Ark services to federated node concepts.
+- Polished project experience: onboarding wizard, interactive setup, and packaged distribution workflows.
 
 ## Recent progress
 
@@ -66,9 +61,11 @@ The following items were still listed as `Unreleased` in `CHANGELOG.md` and have
 
 ## Milestones
 
-- `v2.0.0`: PMF Embedded Kernel, 3-layer repo architecture, package reorganization. ✓
-- `v2.1.0`: Enhanced semantic search, better UX, and broader analytics coverage.
-- `v3.0.0`: Stable release with polished dashboards, scalable ingestion, and strong local observability.
+- `v0.1.x`: Core pipeline, CLI, web UI, packaging, FTS search. ✓
+- `v2.0.0`: PMF Embedded Kernel, 3-layer repo architecture (source/local/control), pipeline/ui/kernel subpackage split. ✓
+- `v2.0.2`: Repo hygiene fixes, audit-engine integration, control-plane vet system. ✓
+- `v2.1.0`: Enhanced semantic search, richer UI drilldown, broader analytics coverage.
+- `v3.0.0`: Federation, stable API, polished distribution.
 
 ## Metrics for Success
 

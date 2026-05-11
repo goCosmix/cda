@@ -95,7 +95,7 @@ VS Code Ark is a multi-stage data pipeline that transforms raw VS Code storage d
         │   QUERY INTERFACE        │
         │   (cda CLI)              │
         │                          │
-        │ - 25+ commands           │
+        │ - 40+ commands           │
         │ - Policy filtering       │
         │ - Rich output formatting │
         └──────────────────────────┘

@@ -25,6 +25,7 @@ Commands:
   cda pmf restart <service>  Restart a service
   cda pmf logs <service>     Tail service logs
   cda check                  Run a full self-diagnostic. The system checks itself.
+  cda init                   First-run setup — create ~/.cda/ and validate environment
   cda serve                  Start the local web UI on port 10001
   cda sync                   Full re-ingest from disk (rebuilds entire DB)
   cda reconstruct            Re-run reconstruction and FTS rebuild only
@@ -62,22 +63,15 @@ import datetime
 from pathlib import Path
 from cda.pipeline.reconstruct import decompress_vfs
 from cda.kernel.pmf_kernel import PMFKernel, PMFKernelError
+from cda.kernel.paths import (
+    DB_PATH, PID_FILE, UI_PID_FILE, UI_LOG_FILE,
+    QUEUE_DIR, POLICY_FILE, ensure_dirs,
+)
 
 import click
 
-# Package-relative paths
-PACKAGE_DIR = Path(__file__).resolve().parent
-ARK_DIR = PACKAGE_DIR.parent.parent.parent
-LOCAL_DIR = ARK_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "cda.db"
-PID_FILE = LOCAL_DIR / "run" / "watcher.pid"
-UI_PID_FILE = LOCAL_DIR / "run" / "ui.pid"
-UI_LOG_FILE = LOCAL_DIR / "logs" / "ui.log"
-WATCHER = PACKAGE_DIR.parent / "pipeline" / "watcher.py"
-INGEST = PACKAGE_DIR.parent / "pipeline" / "ingest.py"
-RECON = PACKAGE_DIR.parent / "pipeline" / "reconstruct.py"
-EXTRACT = PACKAGE_DIR.parent / "pipeline" / "extract.py"
-EMBED = PACKAGE_DIR.parent / "pipeline" / "embed.py"
+# Ensure runtime dirs exist on every CLI invocation
+ensure_dirs()
 
 kernel = PMFKernel()
 
@@ -333,14 +327,13 @@ def status():
         click.echo(f"  Start with: {bold('cda watch start')}")
 
     # Queue status
-    queue_dir = LOCAL_DIR / "queue"
-    if queue_dir.exists():
-        pending = len(list(queue_dir.glob("*.json")))
-        completed = len(list(queue_dir.glob("*.completed")))
+    if QUEUE_DIR.exists():
+        pending = len(list(QUEUE_DIR.glob("*.json")))
+        completed = len(list(QUEUE_DIR.glob("*.completed")))
         click.echo(f"  Queue: {pending} pending, {completed} completed")
         if pending > 0:
             # Show last pending operation
-            pending_files = sorted(queue_dir.glob("*.json"))
+            pending_files = sorted(QUEUE_DIR.glob("*.json"))
             if pending_files:
                 try:
                     data = json.loads(pending_files[-1].read_text())
@@ -546,7 +539,7 @@ def embed():
 def embed_build():
     """Build semantic embeddings and session intelligence."""
     click.echo(yellow("  Building semantic intelligence..."))
-    result = subprocess.run([sys.executable, str(EMBED)], capture_output=False)
+    result = subprocess.run([sys.executable, "-m", "cda.pipeline.embed"], capture_output=False)
     if result.returncode == 0:
         click.echo(green("  Embed build complete"))
     else:
@@ -754,7 +747,7 @@ def sync():
     errors = 0
 
     click.echo(yellow("  Running full ingest — this rewrites the DB..."))
-    result = subprocess.run([sys.executable, str(INGEST)], capture_output=False)
+    result = subprocess.run([sys.executable, "-m", "cda.pipeline.ingest"], capture_output=False)
     if result.returncode != 0:
         click.echo(red("  Ingest failed"))
         finish_run(run_id, stages_done, {}, errors=1, exit_code=1, notes="ingest failed")
@@ -763,7 +756,7 @@ def sync():
 
     click.echo(green("  Ingest complete"))
     click.echo(yellow("  Running reconstruction..."))
-    result = subprocess.run([sys.executable, str(RECON)], capture_output=False)
+    result = subprocess.run([sys.executable, "-m", "cda.pipeline.reconstruct"], capture_output=False)
     if result.returncode != 0:
         click.echo(red("  Reconstruction failed"))
         finish_run(run_id, stages_done, {}, errors=1, exit_code=1, notes="reconstruct failed")
@@ -772,7 +765,7 @@ def sync():
 
     click.echo(green("  Reconstruction complete"))
     click.echo(yellow("  Running analysis..."))
-    result = subprocess.run([sys.executable, str(EXTRACT)], capture_output=False)
+    result = subprocess.run([sys.executable, "-m", "cda.pipeline.extract"], capture_output=False)
     if result.returncode != 0:
         click.echo(red("  Analysis failed"))
         finish_run(run_id, stages_done, {}, errors=1, exit_code=1, notes="extract failed")
@@ -781,7 +774,7 @@ def sync():
 
     click.echo(green("  Analysis complete"))
     click.echo(yellow("  Running semantic intelligence..."))
-    result = subprocess.run([sys.executable, str(EMBED)], capture_output=False)
+    result = subprocess.run([sys.executable, "-m", "cda.pipeline.embed"], capture_output=False)
     if result.returncode != 0:
         click.echo(red("  Semantic intelligence failed"))
         errors += 1
@@ -809,7 +802,7 @@ def sync():
 def reconstruct():
     """Re-run session reconstruction and FTS rebuild only."""
     click.echo(yellow("  Reconstructing exchanges..."))
-    subprocess.run([sys.executable, str(RECON)], capture_output=False)
+    subprocess.run([sys.executable, "-m", "cda.pipeline.reconstruct"], capture_output=False)
     click.echo(green("  Done"))
 
 
@@ -1470,9 +1463,8 @@ def policy():
 def policy_allow(pattern):
     """Add an allow pattern for search results."""
     # For now, store in a simple text file
-    policy_file = LOCAL_DIR / "config" / "policy.txt"
     try:
-        with open(policy_file, "a") as f:
+        with open(POLICY_FILE, "a") as f:
             f.write(f"ALLOW {pattern}\n")
         click.echo(green(f"  Added allow pattern: {pattern}"))
     except Exception as e:
@@ -1483,9 +1475,8 @@ def policy_allow(pattern):
 @click.argument("pattern")
 def policy_deny(pattern):
     """Add a deny pattern for search results."""
-    policy_file = LOCAL_DIR / "config" / "policy.txt"
     try:
-        with open(policy_file, "a") as f:
+        with open(POLICY_FILE, "a") as f:
             f.write(f"DENY {pattern}\n")
         click.echo(green(f"  Added deny pattern: {pattern}"))
     except Exception as e:
@@ -1495,8 +1486,7 @@ def policy_deny(pattern):
 @policy.command("list")
 def policy_list():
     """List current policies."""
-    policy_file = LOCAL_DIR / "config" / "policy.txt"
-    if not policy_file.exists():
+    if not POLICY_FILE.exists():
         click.echo(dim("  No policies configured"))
         return
 
@@ -1504,7 +1494,7 @@ def policy_list():
     click.echo(bold("  Data Access Policies"))
     click.echo(hr())
     try:
-        with open(policy_file, "r") as f:
+        with open(POLICY_FILE, "r") as f:
             for line in f:
                 line = line.strip()
                 if line.startswith("ALLOW "):
@@ -1518,14 +1508,13 @@ def policy_list():
 
 def check_policy(text):
     """Check if text passes policy filters. Returns True if allowed."""
-    policy_file = LOCAL_DIR / "config" / "policy.txt"
-    if not policy_file.exists():
+    if not POLICY_FILE.exists():
         return True  # No policies = allow all
 
     allow_patterns = []
     deny_patterns = []
     try:
-        with open(policy_file, "r") as f:
+        with open(POLICY_FILE, "r") as f:
             for line in f:
                 line = line.strip()
                 if line.startswith("ALLOW "):
@@ -2572,6 +2561,55 @@ def check(as_json, fail_fast):
         click.echo(f"  {red(bold(f'{len(failed)} check(s) failed:'))} {', '.join(failed)}")
     click.echo()
     sys.exit(0 if passed_all else 1)
+
+
+# ─────────────────────────────────────────────
+# INIT
+# ─────────────────────────────────────────────
+
+@cli.command("init")
+def init():
+    """First-run setup — create ~/.cda/ directory structure and validate environment."""
+    from cda.kernel.paths import (
+        CDA_HOME, DATA_DIR, RUN_DIR, LOG_DIR, QUEUE_DIR,
+        PMF_DIR, PMF_LOG_DIR, CONFIG_DIR, POLICY_FILE,
+    )
+    import os
+
+    click.echo()
+    click.echo(bold("  Code Data Ark — init"))
+    click.echo(hr())
+
+    # Create directory tree
+    dirs = [DATA_DIR, RUN_DIR, LOG_DIR, QUEUE_DIR, PMF_DIR, PMF_LOG_DIR, CONFIG_DIR]
+    for d in dirs:
+        d.mkdir(parents=True, exist_ok=True)
+        click.echo(green(f"  {d}"))
+
+    # Write a starter policy file if none exists
+    if not POLICY_FILE.exists():
+        POLICY_FILE.write_text("# CDA access policy\n# ALLOW <pattern>\n# DENY  <pattern>\n")
+        click.echo(green(f"  {POLICY_FILE}  (created)"))
+
+    # Validate VS Code data dir
+    vscode_data = Path(os.environ.get(
+        "VSCODE_DATA_DIR",
+        Path.home() / "Library/Application Support/Code/User",
+    ))
+    if vscode_data.exists():
+        click.echo(green(f"  VS Code data dir: {vscode_data}"))
+    else:
+        click.echo(yellow(f"  VS Code data dir not found: {vscode_data}"))
+        click.echo(yellow("  Set VSCODE_DATA_DIR if your data is elsewhere."))
+
+    click.echo()
+    click.echo(bold("  CDA_HOME: ") + str(CDA_HOME))
+    click.echo()
+    click.echo(dim("  Next steps:"))
+    click.echo(dim("    cda sync         — ingest all VS Code session data"))
+    click.echo(dim("    cda watch start  — start the live watcher daemon"))
+    click.echo(dim("    cda serve        — open the web dashboard on :10001"))
+    click.echo()
 
 
 # ─────────────────────────────────────────────

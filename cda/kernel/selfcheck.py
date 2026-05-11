@@ -26,15 +26,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# ── paths the system knows about itself ─────────────────────────────────────
+from cda.kernel.paths import DB_PATH, PID_FILE, QUEUE_DIR
+
 PACKAGE_DIR  = Path(__file__).resolve().parent
 SOURCE_DIR   = PACKAGE_DIR.parent.parent          # source/  — tracked repo root
-PROJECT_DIR  = PACKAGE_DIR.parent.parent.parent   # repo root — where layers live
-LOCAL_DIR    = PROJECT_DIR / "local"
-DB_PATH      = LOCAL_DIR / "data" / "cda.db"
-PID_FILE     = LOCAL_DIR / "run" / "watcher.pid"
-QUEUE_DIR    = LOCAL_DIR / "queue"
 VERSION_FILE = SOURCE_DIR / "version"
+GIT_ROOT     = SOURCE_DIR.parent                   # repo root — used for git check-ignore
 
 REQUIRED_TABLES = [
     "sessions", "exchanges", "tool_calls", "vfs", "workspaces",
@@ -231,7 +228,7 @@ def check_data_gitignored():
     try:
         result = subprocess.run(
             ["git", "check-ignore", "-q", "local"],
-            cwd=PROJECT_DIR,
+            cwd=GIT_ROOT,
             capture_output=True,
         )
         if result.returncode == 0:

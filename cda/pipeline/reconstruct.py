@@ -19,9 +19,8 @@ import time
 from typing import Optional
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
-LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "cda.db"
+from cda.kernel.paths import DB_PATH
+
 NOW_MS  = int(time.time() * 1000)
 
 EXCHANGES_SCHEMA = """

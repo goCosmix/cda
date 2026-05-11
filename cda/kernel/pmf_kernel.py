@@ -8,19 +8,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
-LOCAL_DIR = ROOT_DIR / "local"
-PACKAGE_DIR = Path(__file__).resolve().parent
-RUNTIME_FILE = LOCAL_DIR / "pmf" / "runtime.json"
-LOG_DIR = LOCAL_DIR / "pmf" / "logs"
-WATCHER_PID_FILE = LOCAL_DIR / "run" / "watcher.pid"
-UI_PID_FILE = LOCAL_DIR / "run" / "ui.pid"
+from cda.kernel.paths import (
+    LOG_DIR, RUNTIME_FILE, PMF_LOG_DIR,
+    PID_FILE as WATCHER_PID_FILE, UI_PID_FILE, CDA_HOME,
+    ensure_dirs,
+)
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 10001
 
-(LOCAL_DIR / "data").mkdir(parents=True, exist_ok=True)
-(LOCAL_DIR / "run").mkdir(parents=True, exist_ok=True)
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+ensure_dirs()
 
 
 def now_ts():
@@ -58,7 +55,7 @@ class ServiceSpec:
             ]
 
         if self.service_id == "watcher":
-            return [sys.executable, str(PACKAGE_DIR.parent / "pipeline" / "watcher.py")]
+            return [sys.executable, "-m", "cda.pipeline.watcher"]
 
         if self.command is not None:
             return list(self.command)
@@ -72,9 +69,9 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Watcher Daemon",
         service_type="daemon",
         description="Live VS Code data watcher and incremental ingest process.",
-        cwd=ROOT_DIR,
+        cwd=CDA_HOME,
         pid_file=WATCHER_PID_FILE,
-        log_file=LOCAL_DIR / "logs" / "watcher.log",
+        log_file=LOG_DIR / "watcher.log",
         allowed_actions=["start", "stop", "restart", "status"],
     ),
     "ui": ServiceSpec(
@@ -82,9 +79,9 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Web UI",
         service_type="daemon",
         description="Local web dashboard for Ark runtime and session analytics.",
-        cwd=ROOT_DIR,
+        cwd=CDA_HOME,
         pid_file=UI_PID_FILE,
-        log_file=LOCAL_DIR / "logs" / "ui.log",
+        log_file=LOG_DIR / "ui.log",
         allowed_actions=["start", "stop", "restart", "status"],
     ),
     "sync": ServiceSpec(
@@ -92,9 +89,9 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Full Sync",
         service_type="task",
         description="Full ingest and rebuild pipeline for Ark data.",
-        command=[sys.executable, str(PACKAGE_DIR.parent / "pipeline" / "ingest.py")],
-        cwd=ROOT_DIR,
-        log_file=LOG_DIR / "sync.log",
+        command=[sys.executable, "-m", "cda.pipeline.ingest"],
+        cwd=CDA_HOME,
+        log_file=PMF_LOG_DIR / "sync.log",
         allowed_actions=["start", "status"],
     ),
     "reconstruct": ServiceSpec(
@@ -102,9 +99,9 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Reconstruct",
         service_type="task",
         description="Reconstruct conversations and rebuild the full text search index.",
-        command=[sys.executable, str(PACKAGE_DIR.parent / "pipeline" / "reconstruct.py")],
-        cwd=ROOT_DIR,
-        log_file=LOG_DIR / "reconstruct.log",
+        command=[sys.executable, "-m", "cda.pipeline.reconstruct"],
+        cwd=CDA_HOME,
+        log_file=PMF_LOG_DIR / "reconstruct.log",
         allowed_actions=["start", "status"],
     ),
     "embed-build": ServiceSpec(
@@ -112,9 +109,9 @@ SERVICE_SPECS: Dict[str, ServiceSpec] = {
         label="Embed Build",
         service_type="task",
         description="Build semantic embeddings and session intelligence.",
-        command=[sys.executable, str(PACKAGE_DIR.parent / "pipeline" / "embed.py"), "build"],
-        cwd=ROOT_DIR,
-        log_file=LOG_DIR / "embed.log",
+        command=[sys.executable, "-m", "cda.pipeline.embed", "build"],
+        cwd=CDA_HOME,
+        log_file=PMF_LOG_DIR / "embed.log",
         allowed_actions=["start", "status"],
     ),
 }
@@ -263,8 +260,8 @@ class PMFKernel:
         with open(log_file, "a") as fh:
             proc = subprocess.Popen(
                 command,
-                cwd=spec.cwd or ROOT_DIR,
-                env={**os.environ, **(spec.env or {}), "PYTHONPATH": str(ROOT_DIR)},
+                cwd=spec.cwd or CDA_HOME,
+                env={**os.environ, **(spec.env or {})},
                 stdout=fh,
                 stderr=fh,
                 preexec_fn=os.setsid if spec.service_type == "daemon" else None,

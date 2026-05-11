@@ -38,17 +38,14 @@ except ImportError:
     print("ERROR: watchfiles not installed. Run: pip install watchfiles")
     sys.exit(1)
 
-ROOT_DIR  = Path(__file__).resolve().parent.parent.parent.parent
-LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH   = LOCAL_DIR / "data" / "cda.db"
-PID_FILE  = LOCAL_DIR / "run" / "watcher.pid"
-QUEUE_DIR = LOCAL_DIR / "queue"
+from cda.kernel.paths import DB_PATH, PID_FILE, QUEUE_DIR, LOG_DIR, ensure_dirs
 # Allow override via env var for portability
 VSCODE_DATA_DIR = Path(os.environ.get("VSCODE_DATA_DIR", Path.home() / "Library/Application Support/Code/User"))
 VS_ROOT   = VSCODE_DATA_DIR / "workspaceStorage"
 GLOBAL_MEM = VSCODE_DATA_DIR / "globalStorage/github.copilot-chat/memory-tool/memories"
 
-log_file = LOCAL_DIR / "logs" / "watcher.log"
+ensure_dirs()
+log_file = LOG_DIR / "watcher.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(message)s",

@@ -26,9 +26,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, DefaultDict
 from collections import defaultdict
 
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
-LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "cda.db"
+from cda.kernel.paths import DB_PATH
 
 # ─────────────────────────────────────────────────────────
 # Signal patterns

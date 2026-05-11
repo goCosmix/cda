@@ -33,11 +33,7 @@ Edit rounds: len(checkpoints) - 1  (first is always "Initial State")
 import sqlite3
 import gzip
 import json
-from pathlib import Path
-
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
-LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "cda.db"
+from cda.kernel.paths import DB_PATH
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS edit_sessions (

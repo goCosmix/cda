@@ -26,6 +26,11 @@ import time
 import logging
 from pathlib import Path
 
+from cda.kernel.paths import DB_PATH, ensure_dirs
+
+# Ensure local dirs are present before writing
+ensure_dirs()
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -39,9 +44,6 @@ HOME        = Path.home()
 VSCODE_DATA_DIR = Path(os.environ.get("VSCODE_DATA_DIR", HOME / "Library/Application Support/Code/User"))
 VS_STORAGE  = VSCODE_DATA_DIR / "workspaceStorage"
 GLOBAL_MEM  = VSCODE_DATA_DIR / "globalStorage/github.copilot-chat/memory-tool/memories"
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
-LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH  = LOCAL_DIR / "data" / "cda.db"
 
 # Large index DBs — too big to blob, record path only
 SKIP_BLOB_PATTERNS = ["workspace-chunks.db", "local-index"]

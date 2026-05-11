@@ -11,18 +11,14 @@ import threading
 import time
 import traceback
 import subprocess
+import sys
 import socket
 from typing import Any, Dict
-from pathlib import Path
 from datetime import datetime
 from wsgiref.simple_server import make_server, WSGIServer
 from urllib.parse import parse_qs
 from cda.kernel.pmf_kernel import PMFKernel
-
-# Get DB path relative to this file
-PACKAGE_DIR = Path(__file__).resolve().parent
-LOCAL_DIR = PACKAGE_DIR.parent.parent.parent / "local"
-DB_PATH = LOCAL_DIR / "data" / "cda.db"
+from cda.kernel.paths import DB_PATH
 kernel = PMFKernel()
 
 # ─────────────────────────────────────────────
@@ -1396,28 +1392,28 @@ def run_action_background(action_id, action_name):
     try:
         if action_name == "sync":
             result = subprocess.run(
-                ["python3", str(PACKAGE_DIR.parent / "pipeline" / "ingest.py")],
+                [sys.executable, "-m", "cda.pipeline.ingest"],
                 capture_output=True,
                 text=True,
                 timeout=300
             )
         elif action_name == "reconstruct":
             result = subprocess.run(
-                ["python3", str(PACKAGE_DIR.parent / "pipeline" / "reconstruct.py")],
+                [sys.executable, "-m", "cda.pipeline.reconstruct"],
                 capture_output=True,
                 text=True,
                 timeout=300
             )
         elif action_name == "embed-build":
             result = subprocess.run(
-                ["python3", str(PACKAGE_DIR.parent / "pipeline" / "embed.py"), "build"],
+                [sys.executable, "-m", "cda.pipeline.embed", "build"],
                 capture_output=True,
                 text=True,
                 timeout=600
             )
         elif action_name == "watch-start":
             result = subprocess.run(
-                ["python3", str(PACKAGE_DIR.parent / "pipeline" / "watcher.py"), "start"],
+                [sys.executable, "-m", "cda.pipeline.watcher", "start"],
                 capture_output=True,
                 text=True,
                 timeout=30

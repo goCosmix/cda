@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-05-11
+
+### Fixed
+- **Install path resolution**: `LOCAL_DIR`/`DB_PATH` no longer derived from `__file__` — now resolves to `~/.cda/` (or `$CDA_HOME`). Survives `pip install` into site-packages.
+- All pipeline stages (`ingest`, `reconstruct`, `extract`, `embed`, `watcher`, `parse_edits`) import canonical paths from new `cda.kernel.paths` module.
+- `PMFKernel` and `selfcheck` updated to use `cda.kernel.paths`.
+- All subprocess pipeline invocations switched from script file paths to `python -m cda.pipeline.<stage>` module calls.
+
+### Added
+- `cda.kernel.paths` — single source of truth for `CDA_HOME`, `DB_PATH`, `PID_FILE`, `QUEUE_DIR`, `POLICY_FILE`, `ensure_dirs()`.
+- `cda init` command — first-run setup: creates `~/.cda/` directory tree, writes starter policy, validates VS Code data path.
+
+### Changed
+- README quickstart now reflects correct install flow: `pip install` → `cda init` → `cda sync` → `cda watch start` → `cda serve`.
+
 ## [2.0.2] - 2026-05-11
 
 ### Fixed

@@ -78,39 +78,41 @@ make install-dev
 
 ## ⚡ Quick Start
 
-1. **Initialize the database**
+1. **Install**
+
+```bash
+pip install code-data-ark
+```
+
+2. **Initialize — create `~/.cda/` and validate your VS Code data path**
+
+```bash
+cda init
+```
+
+3. **Ingest all VS Code session data**
 
 ```bash
 cda sync
 ```
 
-2. **Start the watcher daemon**
+4. **Start the live watcher daemon**
 
 ```bash
 cda watch start
 ```
 
-3. **Inspect the PMF runtime services**
+5. **Open the web dashboard**
 
 ```bash
-cda pmf services
+cda serve   # → http://127.0.0.1:10001
 ```
 
-4. **Build semantic intelligence**
+6. **Build semantic intelligence** (optional, requires `sentence-transformers`)
 
 ```bash
 cda embed build
 ```
-
-4. **Start the web UI**
-
-```bash
-cda ui start
-```
-
-5. **Open your browser**
-
-Visit `http://127.0.0.1:10001`
 
 ## 🌐 Web UI
 

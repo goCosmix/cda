@@ -10,12 +10,10 @@ This stage builds semantic embeddings and mini-intelligence artifacts:
 
 import json
 import sqlite3
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
-LOCAL_DIR = ROOT_DIR / "local"
-DB_PATH = LOCAL_DIR / "data" / "cda.db"
+from cda.kernel.paths import DB_PATH
+
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 MAX_EMBED_TEXT = 1400
 

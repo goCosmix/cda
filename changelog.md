@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] - 2026-05-11
+
+### Added
+- **`cda pmf install`** — generates and loads a macOS `~/Library/LaunchAgents/com.gocosmix.cda.plist`; CDA starts automatically on login
+- **`cda pmf uninstall`** — unloads and removes the LaunchAgent plist
+- **`cda pmf up`** — starts watcher + web UI in one command; opens browser when the server is ready; called by launchd on login
+- **Browser auto-open**: `cda serve`, `cda ui start`, and `cda pmf start ui` now open a browser tab when the server is ready (`--no-browser` to disable)
+- `cda.kernel.pmf_kernel`: `install_launchd()`, `uninstall_launchd()`, `generate_plist()`, `plist_path()`, `open_browser_when_ready()`, `wait_for_port_and_open_browser()`
+
 ## [2.0.3] - 2026-05-11
 
 ### Fixed

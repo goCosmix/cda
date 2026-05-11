@@ -24,6 +24,9 @@ Commands:
   cda pmf stop <service>     Stop a service
   cda pmf restart <service>  Restart a service
   cda pmf logs <service>     Tail service logs
+  cda pmf up                 Start watcher + web UI (opens browser when ready)
+  cda pmf install            Register as macOS LaunchAgent (auto-start on login)
+  cda pmf uninstall          Remove the LaunchAgent registration
   cda check                  Run a full self-diagnostic. The system checks itself.
   cda init                   First-run setup — create ~/.cda/ and validate environment
   cda serve                  Start the local web UI on port 10001
@@ -62,7 +65,11 @@ import textwrap
 import datetime
 from pathlib import Path
 from cda.pipeline.reconstruct import decompress_vfs
-from cda.kernel.pmf_kernel import PMFKernel, PMFKernelError
+from cda.kernel.pmf_kernel import (
+    PMFKernel, PMFKernelError,
+    install_launchd, uninstall_launchd, plist_path,
+    open_browser_when_ready, wait_for_port_and_open_browser,
+)
 from cda.kernel.paths import (
     DB_PATH, PID_FILE, UI_PID_FILE, UI_LOG_FILE,
     QUEUE_DIR, POLICY_FILE, ensure_dirs,
@@ -361,10 +368,11 @@ def status():
 @cli.command("serve")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Local host to bind the web UI")
 @click.option("--port", default=10001, show_default=True, help="Local port for the web UI")
-def serve(host, port):
+@click.option("--no-browser", "no_browser", is_flag=True, default=False, help="Don't open browser automatically")
+def serve(host, port, no_browser):
     """Start the local web UI for Code Data Ark in the foreground."""
-    click.echo(yellow(f"  Starting local web UI at http://{host}:{port}"))
-    click.echo(yellow("  Use `cda ui start` to launch it as a background service."))
+    url = f"http://{host}:{port}"
+    click.echo(yellow(f"  Starting local web UI at {url}"))
     try:
         import importlib
         import cda.ui.web as web
@@ -373,6 +381,8 @@ def serve(host, port):
         click.echo(red("  Failed to start web UI. Ensure the package is installed and importable."))
         click.echo(red(f"  Details: {exc}"))
         return
+    if not no_browser:
+        open_browser_when_ready(url, host, port)
     web.start_server(host=host, port=port)
 
 
@@ -396,12 +406,17 @@ def _ui_is_running():
 @ui.command("start")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Local host to bind the web UI")
 @click.option("--port", default=10001, show_default=True, help="Local port for the web UI")
-def ui_start(host, port):
+@click.option("--no-browser", "no_browser", is_flag=True, default=False, help="Don't open browser automatically")
+def ui_start(host, port, no_browser):
     """Start the web UI as a background service."""
     try:
         result = kernel.start_service("ui", options={"host": host, "port": port})
-        click.echo(green(f"  Web UI started in background at http://{host}:{port} pid={result['pid']}"))
+        url = f"http://{host}:{port}"
+        click.echo(green(f"  Web UI started in background at {url} pid={result['pid']}"))
         click.echo(yellow(f"  Logs: {UI_LOG_FILE}"))
+        if not no_browser:
+            click.echo(dim("  Opening browser when server is ready..."))
+            wait_for_port_and_open_browser(url, host, port)
     except PMFKernelError as exc:
         click.echo(red(f"  Failed to start UI: {exc}"))
 
@@ -485,12 +500,17 @@ def pmf_status(service_id):
 @click.argument("service_id")
 @click.option("--host", default="127.0.0.1", help="Host override for UI service")
 @click.option("--port", default=10001, help="Port override for UI service")
-def pmf_start(service_id, host, port):
+@click.option("--no-browser", "no_browser", is_flag=True, default=False, help="Don't open browser (UI service only)")
+def pmf_start(service_id, host, port, no_browser):
     """Start a PMF-managed Ark service."""
     options = {"host": host, "port": port} if service_id == "ui" else None
     try:
         result = kernel.start_service(service_id, options=options)
         click.echo(green(f"  Started {result['label']} pid={result['pid']}"))
+        if service_id == "ui" and not no_browser:
+            url = f"http://{host}:{port}"
+            click.echo(dim("  Opening browser when server is ready..."))
+            wait_for_port_and_open_browser(url, host, port)
     except PMFKernelError as exc:
         click.echo(red(f"  {exc}"))
 
@@ -527,6 +547,69 @@ def pmf_logs(service_id, tail):
         click.echo(output)
     except PMFKernelError as exc:
         click.echo(red(f"  {exc}"))
+
+
+@pmf.command("up")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Host for web UI")
+@click.option("--port", default=10001, show_default=True, help="Port for web UI")
+@click.option("--no-browser", "no_browser", is_flag=True, default=False, help="Don't open browser when UI is ready")
+def pmf_up(host, port, no_browser):
+    """Start all CDA services (watcher + web UI). Called automatically by launchd on login."""
+    url = f"http://{host}:{port}"
+
+    click.echo(bold("  Code Data Ark — starting services"))
+    click.echo(hr())
+
+    try:
+        result = kernel.start_service("watcher")
+        click.echo(green(f"  Watcher      started  pid={result['pid']}"))
+    except PMFKernelError as exc:
+        click.echo(yellow(f"  Watcher      {exc}"))
+
+    try:
+        result = kernel.start_service("ui", options={"host": host, "port": port})
+        click.echo(green(f"  Web UI       started  pid={result['pid']}  →  {url}"))
+        if not no_browser:
+            click.echo(dim("  Opening browser when server is ready..."))
+            wait_for_port_and_open_browser(url, host, port)
+    except PMFKernelError as exc:
+        click.echo(yellow(f"  Web UI       {exc}"))
+
+    click.echo()
+
+
+@pmf.command("install")
+def pmf_install():
+    """Install CDA as a macOS launchd LaunchAgent (auto-start on login)."""
+    from cda.kernel.paths import CDA_HOME as _cda_home
+    click.echo()
+    click.echo(bold("  Installing CDA LaunchAgent"))
+    click.echo(hr())
+    try:
+        target = install_launchd(_cda_home)
+        click.echo(green(f"  Plist:   {target}"))
+        click.echo(green("  Label:   com.gocosmix.cda"))
+        click.echo(green("  Loaded:  yes — CDA will start automatically on next login"))
+        click.echo()
+        click.echo(dim("  To start services now without logging out:"))
+        click.echo(dim("    cda pmf up"))
+        click.echo()
+    except PMFKernelError as exc:
+        click.echo(red(f"  {exc}"))
+        click.echo(yellow("  Make sure `cda` is on PATH: export PATH=\"$HOME/Library/Python/3.9/bin:$PATH\""))
+        click.echo()
+
+
+@pmf.command("uninstall")
+def pmf_uninstall():
+    """Remove the CDA launchd LaunchAgent."""
+    target = plist_path()
+    if not target.exists():
+        click.echo(yellow("  No LaunchAgent plist found — nothing to uninstall."))
+        return
+    uninstall_launchd()
+    click.echo(green(f"  Removed: {target}"))
+    click.echo(green("  CDA will no longer start automatically on login."))
 
 
 @cli.group()
@@ -2606,9 +2689,10 @@ def init():
     click.echo(bold("  CDA_HOME: ") + str(CDA_HOME))
     click.echo()
     click.echo(dim("  Next steps:"))
+    click.echo(dim("    cda pmf install  — register as a macOS LaunchAgent (auto-start on login)"))
     click.echo(dim("    cda sync         — ingest all VS Code session data"))
-    click.echo(dim("    cda watch start  — start the live watcher daemon"))
-    click.echo(dim("    cda serve        — open the web dashboard on :10001"))
+    click.echo(dim("    cda pmf up       — start watcher + web UI now (opens browser)"))
+    click.echo(dim("    cda serve        — run web UI in foreground (opens browser)"))
     click.echo()
 
 

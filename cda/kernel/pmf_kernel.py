@@ -1,9 +1,13 @@
 import json
 import os
+import shutil
 import signal
+import socket
 import subprocess
 import sys
+import threading
 import time
+import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -16,6 +20,132 @@ from cda.kernel.paths import (
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 10001
+
+# ── launchd integration ──────────────────────────────────────────────────────
+
+PLIST_LABEL = "com.gocosmix.cda"
+
+
+def plist_path() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{PLIST_LABEL}.plist"
+
+
+def generate_plist(cda_bin: str, cda_home: Path) -> str:
+    log = cda_home / "logs" / "launchd.log"
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{PLIST_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{cda_bin}</string>
+        <string>pmf</string>
+        <string>up</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>{log}</string>
+    <key>StandardErrorPath</key>
+    <string>{log}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>CDA_HOME</key>
+        <string>{cda_home}</string>
+        <key>PATH</key>
+        <string>{os.path.dirname(cda_bin)}:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
+"""
+
+
+def install_launchd(cda_home: Path) -> Path:
+    """Write the LaunchAgent plist and load it with launchctl."""
+    cda_bin = shutil.which("cda")
+    if not cda_bin:
+        raise PMFKernelError("cda binary not found on PATH — cannot generate plist")
+
+    target = plist_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(generate_plist(cda_bin, cda_home))
+
+    # Unload any stale registration first
+    subprocess.run(["launchctl", "unload", str(target)], capture_output=True)
+
+    result = subprocess.run(
+        ["launchctl", "load", str(target)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise PMFKernelError(f"launchctl load failed: {result.stderr.strip()}")
+
+    return target
+
+
+def uninstall_launchd() -> None:
+    """Unload and remove the LaunchAgent plist."""
+    target = plist_path()
+    if target.exists():
+        subprocess.run(["launchctl", "unload", str(target)], capture_output=True)
+        target.unlink(missing_ok=True)
+
+
+def open_browser_when_ready(
+    url: str,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    timeout: float = 12.0,
+) -> threading.Thread:
+    """
+    Spawn a daemon thread that polls host:port and opens a browser when ready.
+    For foreground (serve) use: the thread outlives the caller because serve blocks.
+    For background (pmf up / ui start): call wait_for_port() instead so we poll
+    synchronously before the process exits.
+    """
+    def _wait_and_open():
+        elapsed = 0.0
+        while elapsed < timeout:
+            try:
+                with socket.create_connection((host, port), timeout=0.5):
+                    webbrowser.open(url)
+                    return
+            except OSError:
+                time.sleep(0.25)
+                elapsed += 0.25
+
+    t = threading.Thread(target=_wait_and_open, daemon=True)
+    t.start()
+    return t
+
+
+def wait_for_port_and_open_browser(
+    url: str,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    timeout: float = 8.0,
+) -> bool:
+    """
+    Block until host:port accepts connections (or timeout), then open browser.
+    Use this when the caller process will exit after starting a background service.
+    Returns True if port came up, False on timeout.
+    """
+    elapsed = 0.0
+    while elapsed < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                webbrowser.open(url)
+                return True
+        except OSError:
+            time.sleep(0.25)
+            elapsed += 0.25
+    return False
+
 
 ensure_dirs()
 

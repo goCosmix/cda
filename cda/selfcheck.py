@@ -30,7 +30,7 @@ from pathlib import Path
 # ── paths the system knows about itself ─────────────────────────────────────
 PACKAGE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = PACKAGE_DIR.parent
-DATA_DIR    = PROJECT_DIR / "sys" / "data"
+DATA_DIR    = PROJECT_DIR / "data"
 DB_PATH     = DATA_DIR / "vscode-ark.db"
 PID_FILE    = PROJECT_DIR / "watcher.pid"
 QUEUE_DIR   = DATA_DIR / "watcher-queue"

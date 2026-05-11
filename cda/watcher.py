@@ -31,7 +31,7 @@ except ImportError:
     sys.exit(1)
 
 ROOT_DIR  = Path(__file__).resolve().parent.parent
-DATA_DIR  = ROOT_DIR / "data"
+DATA_DIR  = ROOT_DIR / "sys" / "data"
 DB_PATH   = DATA_DIR / "vscode-ark.db"
 PID_FILE  = DATA_DIR / "watcher.pid"
 QUEUE_DIR = DATA_DIR / "watcher-queue"

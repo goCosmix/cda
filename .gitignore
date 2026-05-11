@@ -234,5 +234,4 @@ pmf_runtime.json
 watcher-queue/
 .DS_Store.venv/
 .venv/
-data/
 sys/

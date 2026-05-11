@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT_DIR / "data"
+DATA_DIR = ROOT_DIR / "sys" / "data"
 PACKAGE_DIR = Path(__file__).resolve().parent
 RUNTIME_FILE = DATA_DIR / "pmf_runtime.json"
 LOG_DIR = DATA_DIR / "pmf_logs"

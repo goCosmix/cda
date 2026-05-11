@@ -60,7 +60,7 @@ import click
 # Package-relative paths
 PACKAGE_DIR = Path(__file__).resolve().parent
 ARK_DIR = PACKAGE_DIR.parent
-DATA_DIR = ARK_DIR / "data"
+DATA_DIR = ARK_DIR / "sys" / "data"
 DB_PATH = DATA_DIR / "vscode-ark.db"
 PID_FILE = DATA_DIR / "watcher.pid"
 UI_PID_FILE = DATA_DIR / "ui.pid"

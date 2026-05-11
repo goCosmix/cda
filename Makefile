@@ -51,7 +51,7 @@ publish: clean build
 
 release: clean
 	python bin/release.py --sync --build
-	git add VERSION setup.py pyproject.toml cda/__init__.py CHANGELOG.md MANIFEST.in bin/release.py
+	git add VERSION pyproject.toml cda/__init__.py CHANGELOG.md bin/release.py
 	git commit -m "Release version $(shell cat VERSION)"
 	python bin/release.py --tag
 	git push origin HEAD --tags

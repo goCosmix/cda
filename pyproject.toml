@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "vscode-ark"
@@ -63,12 +63,8 @@ Issues = "https://github.com/goCosmix/vscode-ark/issues"
 Documentation = "https://github.com/goCosmix/vscode-ark#readme"
 Changelog = "https://github.com/goCosmix/vscode-ark/blob/main/CHANGELOG.md"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["cda*"]
-
-[tool.setuptools.package-data]
-cda = ["*.txt", "*.md", "*.py"]
+[tool.hatch.build.targets.wheel]
+packages = ["cda"]
 
 [tool.black]
 line-length = 100

@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION_FILE = ROOT / "VERSION"
+VERSION_FILE = ROOT / "version"
 PYPROJECT_FILE = ROOT / "pyproject.toml"
 SETUP_FILE = ROOT / "setup.py"
 INIT_FILE = ROOT / "cda" / "__init__.py"

@@ -35,7 +35,7 @@ LOCAL_DIR    = PROJECT_DIR / "local"
 DB_PATH      = LOCAL_DIR / "data" / "vscode-ark.db"
 PID_FILE     = LOCAL_DIR / "run" / "watcher.pid"
 QUEUE_DIR    = LOCAL_DIR / "queue"
-VERSION_FILE = SOURCE_DIR / "VERSION"
+VERSION_FILE = SOURCE_DIR / "version"
 
 REQUIRED_TABLES = [
     "sessions", "exchanges", "tool_calls", "vfs", "workspaces",

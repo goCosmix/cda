@@ -17,7 +17,7 @@ class PyPIManager:
 
     def __init__(self):
         self.token = self._load_token()
-        self.version_file = ROOT_DIR / "VERSION"
+        self.version_file = ROOT_DIR / "version"
 
     def _load_token(self) -> str:
         """Load PyPI token from environment or config file."""

@@ -6,9 +6,9 @@ build-backend = "hatchling.build"
 name = "vscode-ark"
 version = "2.0.0"
 description = "Comprehensive analysis system for VS Code/Copilot Chat sessions with behavioral signal extraction and heat scoring"
-readme = "README.md"
+readme = "readme.md"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["license"]
 requires-python = ">=3.8"
 authors = [
     {name = "Ernie Butcher", email = "ernie@fiosii.com"},
@@ -61,7 +61,7 @@ Homepage = "https://github.com/goCosmix/vscode-ark"
 Repository = "https://github.com/goCosmix/vscode-ark.git"
 Issues = "https://github.com/goCosmix/vscode-ark/issues"
 Documentation = "https://github.com/goCosmix/vscode-ark#readme"
-Changelog = "https://github.com/goCosmix/vscode-ark/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/goCosmix/vscode-ark/blob/main/changelog.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["cda"]

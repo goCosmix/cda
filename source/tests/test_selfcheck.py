@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 class TestVersion(unittest.TestCase):
     def _make(self, tmp, content):
         from cda import selfcheck
-        selfcheck.VERSION_FILE = tmp / "VERSION"
+        selfcheck.VERSION_FILE = tmp / "version"
         if content is not None:
             selfcheck.VERSION_FILE.write_text(content)
         return selfcheck.check_version()

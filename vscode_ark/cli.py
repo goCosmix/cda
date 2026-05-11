@@ -24,6 +24,7 @@ Commands:
   cda pmf stop <service>     Stop a service
   cda pmf restart <service>  Restart a service
   cda pmf logs <service>     Tail service logs
+  cda check                  Run a full self-diagnostic. The system checks itself.
   cda serve                  Start the local web UI on port 10001
   cda sync                   Full re-ingest from disk (rebuilds entire DB)
   cda reconstruct            Re-run reconstruction and FTS rebuild only
@@ -2290,6 +2291,61 @@ def tokens(session_id, limit):
             click.echo(hr())
             click.echo(bold(f"  {'ALL':>10}  {totals[0]:>12,}  {(totals[1] or 0):>9,}"))
         click.echo()
+
+
+# ─────────────────────────────────────────────
+# SELF CHECK
+# ─────────────────────────────────────────────
+
+@cli.command("check")
+@click.option("--json", "as_json", is_flag=True, help="Output results as JSON.")
+@click.option("--fail-fast", is_flag=True, help="Stop at first failure.")
+def check(as_json, fail_fast):
+    """Run a full self-diagnostic. The system checks itself."""
+    from vscode_ark.selfcheck import CHECKS
+
+    if not as_json:
+        click.echo()
+        click.echo(bold("  cda self-check"))
+        click.echo(hr())
+
+    results = []
+    passed_all = True
+
+    for check_fn in CHECKS:
+        result = check_fn()
+        results.append(result)
+        passed = result["passed"]
+        if not passed:
+            passed_all = False
+
+        if not as_json:
+            icon  = green("✓") if passed else red("✗")
+            name  = cyan(result["name"].ljust(18))
+            msg   = result["message"]
+            click.echo(f"  {icon}  {name}  {msg}")
+            if not passed and result.get("details"):
+                click.echo(f"       {dim(str(result['details'])[:120])}")
+
+        if fail_fast and not passed:
+            break
+
+    if as_json:
+        import json as _json
+        click.echo(_json.dumps({
+            "passed": passed_all,
+            "checks": results,
+        }, indent=2))
+        sys.exit(0 if passed_all else 1)
+
+    click.echo(hr())
+    if passed_all:
+        click.echo(f"  {green(bold('All checks passed.'))}")
+    else:
+        failed = [r["name"] for r in results if not r["passed"]]
+        click.echo(f"  {red(bold(f'{len(failed)} check(s) failed:'))} {', '.join(failed)}")
+    click.echo()
+    sys.exit(0 if passed_all else 1)
 
 
 # ─────────────────────────────────────────────

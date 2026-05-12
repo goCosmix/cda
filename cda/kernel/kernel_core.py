@@ -11,6 +11,7 @@ import json
 import os
 import signal
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -264,6 +265,23 @@ class KernelCore:
         state["status"] = "running"
         self._save_state()
         self._emit_event("service.started", service_id, f"pid={state['pid']}")
+
+        # For task services, watch completion in background and update state.
+        if spec.service_type == "task":
+            def _watch(p, sid=service_id, st=state):
+                rc = p.wait()
+                st["exit_code"] = rc
+                st["status"] = "completed" if rc == 0 else "failed"
+                st["pid"] = None
+                st["updated_at"] = self._now_iso()
+                self._save_state()
+                self._emit_event(
+                    "task.completed" if rc == 0 else "task.failed",
+                    sid, f"exit={rc}",
+                    level="info" if rc == 0 else "error",
+                )
+            threading.Thread(target=_watch, args=(proc,), daemon=False).start()
+
         return self.service_status(service_id)
 
     def run_task(

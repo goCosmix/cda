@@ -700,6 +700,8 @@ def main():
 
     needs_exchange_rebuild = set()  # noqa: F841 — reserved for future use
     symbol_index_dirty = False
+    _last_health_check = time.time()
+    _HEALTH_CHECK_INTERVAL = 300  # seconds between queue-depth / watcher checks
 
     for changes in watch(VS_ROOT, GLOBAL_MEM, watch_filter=lambda change, path: True, yield_on_timeout=True, rust_timeout=500):
         c = get_conn()
@@ -770,6 +772,19 @@ def main():
                 except Exception as ex:
                     log.warning(f"symbol index rebuild failed: {ex}")
                 symbol_index_dirty = False
+            # Periodic health check: queue depth alert every 5 minutes
+            now_hc = time.time()
+            if now_hc - _last_health_check >= _HEALTH_CHECK_INTERVAL:
+                try:
+                    import importlib as _il
+                    _alerting = _il.import_module("cda.pipeline.alerting")
+                    _result = _alerting.run_health_check(notify=True)
+                    if not _result["healthy"]:
+                        for _issue in _result["issues"]:
+                            log.warning(f"health: {_issue}")
+                except Exception as _hc_err:
+                    log.debug(f"health check error: {_hc_err}")
+                _last_health_check = now_hc
         except Exception as e:
             log.error(f"handler error: {e}", exc_info=True)
         finally:

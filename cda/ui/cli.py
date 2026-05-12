@@ -501,7 +501,7 @@ def pmf_services():
     """List embedded PMF services and runtime status."""
     rows = kernel.services()
     click.echo()
-    click.echo(bold("  PMF Runtime Services"))
+    click.echo(bold("  EAK Runtime Services"))
     click.echo(hr())
     for service in rows:
         status = green(service["status"]) if service["status"] == "running" else yellow(service["status"])
@@ -626,7 +626,7 @@ def pmf_install():
         click.echo(green("  Loaded:  yes — CDA will start automatically on next login"))
         click.echo()
         click.echo(dim("  To start services now without logging out:"))
-        click.echo(dim("    cda pmf up"))
+        click.echo(dim("    cda eak up"))
         click.echo()
     except PMFKernelError as exc:
         click.echo(red(f"  {exc}"))
@@ -727,6 +727,33 @@ def eak_events(tail):
         click.echo()
     except Exception as exc:
         click.echo(red(f"  Failed to read events: {exc}"))
+
+
+@eak.command("check")
+@click.option("--notify", is_flag=True, default=False, help="Fire macOS notifications for issues found")
+def eak_check(notify):
+    """Run health checks: watcher process, queue depth."""
+    from cda.pipeline.alerting import run_health_check
+    result = run_health_check(notify=notify)
+    click.echo()
+    click.echo(bold("  EAK Health Check"))
+    click.echo(hr())
+    w = result["watcher"]
+    q = result["queue"]
+    watcher_str = green(f"running  pid={w['pid']}") if w["healthy"] else red(f"DOWN  ({w.get('reason','?')})")
+    click.echo(f"  {'Watcher':<16} {watcher_str}")
+    q_level = q["level"]
+    q_str = f"{q['pending']} pending"
+    q_colored = green(q_str) if q_level == "ok" else (yellow(q_str) if q_level == "warn" else red(q_str))
+    click.echo(f"  {'Queue depth':<16} {q_colored}  ({q['completed']} completed)")
+    if result["healthy"]:
+        click.echo(green("  All systems healthy."))
+    else:
+        for issue in result["issues"]:
+            click.echo(red(f"  ! {issue}"))
+        if not notify:
+            click.echo(dim("  Run with --notify to fire macOS notifications."))
+    click.echo()
 
 
 @eak.command("up")

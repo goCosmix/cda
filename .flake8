@@ -17,3 +17,5 @@ extend-ignore =
 per-file-ignores =
     # Conditional import at bottom of watcher.py main guard
     cda/pipeline/watcher.py:E402
+    # web.py contains embedded JS/HTML template strings that cannot be line-wrapped
+    cda/ui/web.py:E501

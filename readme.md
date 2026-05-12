@@ -6,24 +6,27 @@
 
 **Code Data Ark** (`cda`) is a local observability and intelligence platform for VS Code + GitHub Copilot Chat sessions. It ingests everything VS Code writes to disk — transcripts, tool calls, VFS blobs, workspace state — and runs a multi-stage pipeline to turn that raw activity into structured data you can actually reason about.
 
-The core insight is that your chat history is not just logs. It carries behavioral signals: moments you corrected the agent, redirected it, expressed frustration, or confirmed that something finally worked. Ark extracts those signals, scores session quality with a heat model, and surfaces the patterns — so you can understand how you work with AI, not just what was said.
+The core insight is that your chat history is not just logs. It carries two distinct signal layers. First: behavioral signals from your side — moments you corrected the agent, redirected it, expressed frustration, or confirmed something worked. Second: cognitive quality signals from the AI's side — whether it acknowledged uncertainty, cited evidence, stated assumptions, or corrected itself. Ark extracts both layers, scores sessions on a heat model and a reasoning model, and surfaces the patterns — so you can understand how well you and the AI are actually thinking together.
 
-On top of that signal layer, Ark builds a semantic intelligence layer: embeddings over all your sessions, full-text and code-symbol search, anomaly alerts, session summaries, and related-session discovery. All of this lives in a local SQLite database, queryable via a 40+ command CLI or a background web dashboard.
+On top of those signal layers, Ark builds a semantic intelligence layer: embeddings over all your sessions, full-text and code-symbol search, anomaly alerts, session summaries, and related-session discovery. All of this lives in a local SQLite database, queryable via a 40+ command CLI or a background web dashboard.
 
-The runtime is managed by an embedded process kernel (PMF) that supervises the watcher daemon, web UI, and pipeline tasks as background services — giving the whole system a lifecycle you can control without touching a process manager.
+The runtime is managed by an embedded process kernel (EAK) that supervises the watcher daemon, web UI, and pipeline tasks as background services — giving the whole system a lifecycle you can control without touching a process manager.
 
-**In short**: point it at your VS Code data directory, run `cda sync`, and you have a searchable, annotated, semantically indexed record of every Copilot session you've ever had — with behavioral scores and anomaly detection included.
+**In short**: point it at your VS Code data directory, run `cda sync`, and you have a searchable, annotated, semantically indexed record of every Copilot session you've ever had — with behavioral scores, AI reasoning scores, and anomaly detection included.
 
 ## ✨ Key Capabilities
 
-- **Multi-stage pipeline**: ingest → reconstruct → extract → embed — each stage enriches the data further
+- **Multi-stage pipeline**: ingest → reconstruct → extract → embed → reasoning — each stage enriches the data further
 - **Behavioral signal detection**: 200+ keyword patterns across 6 signal types; frustration, correction, recovery
 - **Heat scoring**: weighted session quality score (0–100) that tracks arc from friction to resolution
+- **AI reasoning quality signals**: 10 signal types across 3 axes — epistemic virtue, process transparency, failure modes
+- **Cognitive score**: per-session reasoning score (0–100) measuring AI output quality: evidence-grounding, assumption-surfacing, self-correction
+- **Extended thinking analysis**: when available, mines native `reasoningText` (Claude extended thinking) alongside final output
 - **Semantic search**: miniLM embeddings over all sessions for similarity, related-session discovery, and topic clustering
 - **Full-text search**: FTS5 index over all exchanges, tool calls, and code symbols
-- **Live watcher daemon**: monitors VS Code directories, queues changes, replays on crash
+- **Live watcher daemon**: monitors VS Code directories, queues changes, replays on crash; periodic health checks with macOS notifications
 - **Background web UI**: session drilldown, signal summaries, alert views, tool-call detail, VFS inspection
-- **PMF Embedded Kernel**: local service lifecycle management — start, stop, restart, status for all Ark daemons
+- **EAK Embedded Kernel**: local service lifecycle management — start, stop, restart, status for all Ark daemons
 - **Export workflows**: JSON, JSONL, and plain-text session export
 
 ## 📋 Table of Contents
@@ -121,27 +124,32 @@ cda pmf uninstall   # Remove the auto-start LaunchAgent registration
 
 ## 🔧 Process Management (PMF)
 
-All background processes run through the embedded PMF kernel. The LaunchAgent is the entry point — nothing starts directly on the host outside of PMF.
+All background processes run through the embedded EAK kernel. The LaunchAgent is the entry point — nothing starts directly on the host outside of EAK.
 
 ```
 launchd (login)
-  └─ cda pmf up
-       ├─ PMF kernel → watcher daemon   (cda.pipeline.watcher)
-       └─ PMF kernel → web UI server    (cda.ui.web)
+  └─ cda eak up
+       ├─ EAK kernel → watcher daemon   (cda.pipeline.watcher)
+       └─ EAK kernel → web UI server    (cda.ui.web)
 ```
 
-### PMF commands
+### EAK commands
 
 ```bash
-cda pmf services           # List all services with status and PID
-cda pmf start <service>    # Start a service (watcher, ui, sync, reconstruct, embed-build)
-cda pmf stop <service>     # Stop a service
-cda pmf restart <service>  # Restart a service
-cda pmf logs <service>     # Tail the service log
-cda pmf up                 # Start watcher + UI (opens browser) — same as launchd trigger
-cda pmf install            # Register LaunchAgent (done automatically by cda setup)
-cda pmf uninstall          # Remove LaunchAgent
+cda eak services           # List all services with status and PID
+cda eak start <service>    # Start a service (watcher, ui, sync, reconstruct, embed-build, backfill, symbol-index)
+cda eak stop <service>     # Stop a service
+cda eak restart <service>  # Restart a service
+cda eak logs <service>     # Tail the service log
+cda eak events             # Show kernel event journal
+cda eak check              # Health check: watcher liveness + queue depth + macOS notification
+cda eak up                 # Start watcher + UI (opens browser) — same as launchd trigger
+cda eak down               # Stop UI + watcher in order
+cda eak install            # Register LaunchAgent (done automatically by cda setup)
+cda eak uninstall          # Remove LaunchAgent
 ```
+
+> `cda pmf` is a backwards-compat alias for `cda eak` — all commands are identical.
 
 ## 🌐 Web UI
 
@@ -169,7 +177,7 @@ The web UI includes:
 ## 📦 Package and Release
 
 - Published on PyPI as `code-data-ark`
-- Current release version: `2.0.2`
+- Current release version: `2.0.16`
 - CLI entry point: `cda`
 - License: MIT
 
@@ -204,11 +212,13 @@ VS Code Storage → ingest.py → vfs + sessions + transcripts
                       ↓
                reconstruct.py → exchanges (structured conversations)
                       ↓
-               extract.py → signals + tokens + heat scores + analysis
+               extract.py → signals + tokens + heat scores + session_analysis
+                      ↓
+               reasoning.py → AI cognitive quality signals + reasoning_score
                       ↓
                embed.py → semantic embeddings + summaries + alerts
                       ↓
-               watcher.py → live sync + FTS indexing + queue resilience
+               watcher.py → live sync + FTS indexing + queue resilience + health checks
                       ↓
                cda → query interface + policy enforcement
 ```
@@ -220,11 +230,16 @@ VS Code Storage → ingest.py → vfs + sessions + transcripts
 | **pipeline/ingest.py** | Data ingestion | VFS storage, gzip compression, session metadata |
 | **pipeline/reconstruct.py** | Conversation processing | Exchange threading, tool call linking, FTS indexing |
 | **pipeline/extract.py** | Signal analysis | Behavioral pattern recognition, heat scoring, token accounting |
-| **pipeline/watcher.py** | Live monitoring | File watching, incremental updates, crash recovery |
+| **pipeline/reasoning.py** | AI cognitive quality | 10 reasoning signal types, cognitive score, extended thinking analysis |
+| **pipeline/watcher.py** | Live monitoring | File watching, incremental updates, crash recovery, health alerts |
+| **pipeline/alerting.py** | Health monitoring | Watcher liveness, queue depth, macOS push notifications |
 | **pipeline/embed.py** | Semantic intelligence | Embeddings, session summaries, anomaly alerts |
-| **kernel/pmf_kernel.py** | Service management | Daemon lifecycle, PID/log tracking, runtime state |
+| **pipeline/backfill.py** | Retroactive analysis | Re-run extract + reasoning + embed over historical sessions |
+| **kernel/kernel_core.py** | Shared kernel DNA | Service lifecycle, PID/log tracking, event journal, task completion |
+| **kernel/eak_kernel.py** | EAK service layer | 7 cda-specific services, launchd integration, browser helpers |
+| **kernel/pmf_kernel.py** | Backwards-compat shim | Re-exports all EAK names for legacy callers |
 | **kernel/selfcheck.py** | System diagnostics | Health checks, install validation, DB integrity |
-| **ui/cli.py** | CLI entry point | 40+ commands, policy filtering, rich formatting |
+| **ui/cli.py** | CLI entry point | 50+ commands, policy filtering, rich formatting |
 | **ui/web.py** | Web dashboard | Browser UI for all CLI features, service control |
 
 ### Database Schema
@@ -233,11 +248,13 @@ VS Code Storage → ingest.py → vfs + sessions + transcripts
 - **sessions** - Chat session information and metadata
 - **vfs** - Gzip-compressed file storage with SHA256 hashes
 - **exchanges** - Structured conversation turns with tool calls
-- **exchange_signals** - Behavioral signal annotations
+- **exchange_signals** - User behavioral signal annotations (correction, frustration, etc.)
+- **reasoning_signals** - AI cognitive quality signal annotations (metacognitive, evidence_grounded, etc.)
 - **symbols** - Code symbol index (functions, classes, etc.)
 - **token_usage** - Per-request token consumption tracking
 - **compactions** - Context window summarization events
-- **session_analysis** - Aggregated session metrics and heat scores
+- **session_analysis** - Aggregated session metrics, heat scores, and reasoning_score
+- **transcript_events** - Raw assistant.message events including extended thinking (reasoningText)
 
 ## 🖥️ CLI Reference
 
@@ -249,12 +266,14 @@ cda status              # Show daemon status and queue information
 cda stats               # System-wide statistics and coverage
 cda sync                # Full data ingestion and rebuild
 cda reconstruct         # Rebuild conversations and search index
-cda pmf services        # List embedded PMF runtime services
-cda pmf status [service] # Show runtime status for PMF services
-cda pmf start <service>  # Start a PMF-managed Ark service
-cda pmf stop <service>   # Stop a PMF-managed Ark service
-cda pmf restart <service> # Restart a PMF-managed Ark service
-cda pmf logs <service>   # Tail runtime logs for a PMF service
+cda backfill            # Re-run extract + reasoning + embed over historical sessions
+cda eak services        # List embedded EAK runtime services
+cda eak status [service] # Show runtime status for EAK services
+cda eak start <service>  # Start an EAK-managed Ark service
+cda eak stop <service>   # Stop an EAK-managed Ark service
+cda eak restart <service> # Restart an EAK-managed Ark service
+cda eak logs <service>   # Tail runtime logs for an EAK service
+cda eak check           # Health check: watcher liveness + queue depth
 
 # Session Analysis
 cda sessions            # List all sessions (newest first)
@@ -359,6 +378,29 @@ Heat Score = min(100, Σ(signal_weights))
 - **Final Heat**: Heat at session end
 - **Recovery**: Sessions that return to low heat after high peaks
 - **Saved Sessions**: High-heat sessions that recover with affirmations
+
+### AI Cognitive Quality Signals
+
+The `reasoning.py` module analyses AI assistant output from `transcript_events` — including native extended thinking traces (`reasoningText`) when present — to score cognitive quality:
+
+| Signal Type | Weight | Description |
+|-------------|--------|-------------|
+| **self_correcting** | +5 | AI corrects itself without user prompt |
+| **assumption_stated** | +3 | AI explicitly surfaces an assumption before acting |
+| **metacognitive** | +4 | AI acknowledges uncertainty or its own limits |
+| **reasoning_shown** | +4 | AI surfaces reasoning process / thinking aloud |
+| **evidence_grounded** | +3 | AI anchors claims to observed file/output/schema |
+| **calibrated** | +3 | AI uses proportional confidence markers |
+| **plan_stated** | +2 | AI articulates a plan before executing |
+| **scope_checked** | +2 | AI verifies scope/context before proceeding |
+| **false_certainty** | -4 | AI asserts definitively without visible basis |
+| **contradiction** | -5 | AI contradicts a prior statement in the session |
+
+```
+reasoning_score = min(100, max(0, Σ(signal_count × weight)))
+```
+
+Stored as `reasoning_score` in `session_analysis`, per-match rows in `reasoning_signals`.
 
 ### Token Usage Tracking
 

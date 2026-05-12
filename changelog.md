@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.16] - 2026-05-12
+
+### Added
+- **`cda/pipeline/reasoning.py`** — cognitive quality signal layer for AI output analysis
+  - 10 signal types across 3 axes: epistemic virtue (metacognitive, assumption_stated, evidence_grounded, self_correcting, calibrated), process transparency (reasoning_shown, plan_stated, scope_checked), failure (false_certainty, contradiction)
+  - Analyses both `content` and `reasoningText` (native extended thinking) fields per assistant message
+  - `build_session_reasoning(conn, session_id)` — reads `transcript_events`, detects signals, upserts `reasoning_signals` table and `reasoning_score` in `session_analysis`
+  - `detect_contradictions()` — heuristic cross-message consistency check
+  - `compute_reasoning_score()` — weighted 0–100 cognitive score per session
+- **`reasoning_signals` table** — stores per-message signal matches: session_id, request_id, ts, signal_type, excerpt, valence
+- **`reasoning_score INTEGER` + `reasoning_analyzed_at TEXT`** columns on `session_analysis`
+- ALTER TABLE migrations for both columns on existing DBs
+
+### Changed
+- `watcher.py` flush path now calls `reasoning.build_session_reasoning()` after `build_session_analysis()`
+- `backfill.py` now calls `reasoning.build_session_reasoning()` after `build_session_analysis()`
+
+## [2.0.15] - 2026-05-12
+
+### Added
+- **`cda/pipeline/alerting.py`** — health checks and macOS push notifications
+  - `check_watcher_health()` — PID file check + live process probe
+  - `check_queue_depth()` — counts pending/completed queue files; WARN=50, CRIT=200 thresholds
+  - `send_notification(title, message, subtitle)` — osascript-based macOS notifications, silent on failure
+  - `run_health_check(notify=True)` — aggregates both checks, fires notifications for issues
+- **`cda eak check`** CLI command — renders colored health table; `--notify` flag for macOS notifications
+- **Task completion state tracking** in `kernel_core.py` — background thread calls `proc.wait()` after task launch, updates state to `completed`/`failed`, persists state and emits event
+
+### Fixed
+- `cda eak` services header showed "PMF Runtime Services" — now "EAK Runtime Services"
+- `cda eak install` hint showed `cda pmf up` — now correctly shows `cda eak up`
+- Watcher periodic health check added to main loop (every 300s)
+
+## [2.0.14] - 2026-05-12
+
+### Added
+- **`cda/kernel/kernel_core.py`** — shared bottom-layer kernel DNA for all goCosmix embedded kernels; extracted from dev's OTKKernel
+  - Service lifecycle: start/stop/restart, PID tracking, state JSON, event journal, run_count
+  - `run_task()` for blocking task execution
+  - `_emit_event()`, `_save_state()`, `_load_state()`, `_refresh()`, `_service_view()`
+- **`cda/kernel/eak_kernel.py`** — Embedded App Kernel; cda-specific top layer extending KernelCore
+  - 7 services: watcher (daemon), ui (daemon), sync, reconstruct, embed-build, backfill, symbol-index
+  - `up(host, port)` / `down()` lifecycle; `generate_plist()`, `install_launchd()`, `uninstall_launchd()`
+  - Launchd plist installs at `~/Library/LaunchAgents/com.gocosmix.cda.plist`, calls `cda eak up`
+- **`cda eak` CLI group** — 11 commands: services, status, start, stop, restart, logs, events, check, up, down, install, uninstall
+
+### Changed
+- `cda/kernel/pmf_kernel.py` replaced with backwards-compat shim — `PMFKernel(EAKKernel)`, all PMF names re-exported from `eak_kernel`
+
+## [2.0.13] - 2026-05-11
+
+### Added
+- **Backfill pipeline** (`cda backfill`) — re-runs extract + embed over sessions missing analysis; `--force` re-processes all, `--session` targets one session
+- **Symbol index** (`cda symbol-index`) — extracts code symbols (functions, classes, variables) from workspace VFS files into `symbols` table with FTS support
+
+### Changed
+- `session_analysis` schema extended with `heat_score`, `peak_heat`, `final_heat`, `saved_session`, `turning_point_ts`, `turning_point_text`
+- Signal taxonomy expanded: `frustration`, `pre_correction` added alongside existing correction/redirect/affirmation/approval/question
+
 ## [2.0.12] - 2026-05-11
 
 ### Fixed

@@ -374,6 +374,30 @@ def status():
     click.echo()
 
 
+@cli.command("backfill")
+@click.option("--force", is_flag=True, default=False, help="Re-process all sessions, not just missing ones")
+@click.option("--session", "session_id", default=None, metavar="SESSION_ID", help="Backfill a single session")
+@click.option("--dry-run", is_flag=True, default=False, help="Show what would be processed without running")
+@click.option("--symbols-only", is_flag=True, default=False, help="Only rebuild the symbol index")
+def backfill(force, session_id, dry_run, symbols_only):
+    """Backfill extract+embed pipeline for sessions missing analysis."""
+    from cda.pipeline.backfill import run_backfill
+    from cda.pipeline import extract
+    conn = db()
+    if symbols_only:
+        extract.ensure_schema(conn)
+        click.echo("Building symbol index...")
+        extract.build_symbol_index(conn)
+        conn.commit()
+        n = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
+        click.echo(green(f"  {n} symbols indexed"))
+        conn.close()
+        return
+    result = run_backfill(conn=conn, force=force, session_id=session_id, dry_run=dry_run)
+    if result.get("errors", 0) > 0:
+        raise SystemExit(1)
+
+
 @cli.command("serve")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Local host to bind the web UI")
 @click.option("--port", default=10001, show_default=True, help="Local port for the web UI")

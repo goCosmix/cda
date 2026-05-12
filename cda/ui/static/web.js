@@ -655,11 +655,48 @@ function initAlerts() {
 }
 
 function initPipeline() {
-    const status = document.getElementById('action-status');
-    if (status) {
-        status.classList.add('hidden');
-    }
+    // Load pipeline status / coverage
+    fetch('/api/pipeline/status').then(r => r.json()).then(d => {
+        const cards = document.getElementById('pipeline-status-cards');
+        if (cards) {
+            const w = d.watcher || {};
+            const qPending = (w.queue_pending || 0);
+            const qColor = qPending > 500 ? 'var(--danger)' : qPending > 50 ? 'var(--warning)' : 'var(--success)';
+            cards.innerHTML = `
+                <div class="stat-card"><div class="stat-value">${w.alive ? '<span style="color:var(--success)">LIVE</span>' : '<span style="color:var(--danger)">DOWN</span>'}</div><div class="stat-label">Watcher</div></div>
+                <div class="stat-card"><div class="stat-value" style="color:${qColor}">${qPending}</div><div class="stat-label">Queue Pending</div></div>
+                <div class="stat-card"><div class="stat-value">${d.totals?.symbols || 0}</div><div class="stat-label">Symbols</div></div>
+                <div class="stat-card"><div class="stat-value">${d.totals?.signals || 0}</div><div class="stat-label">Signals</div></div>
+            `;
+        }
+        const cov = document.getElementById('pipeline-coverage');
+        if (cov && d.sessions) {
+            const s = d.sessions;
+            const bar = (pct) => {
+                const color = pct >= 90 ? 'var(--success)' : pct >= 60 ? 'var(--warning)' : 'var(--danger)';
+                return `<div style="background:var(--bg-tertiary);border-radius:4px;height:8px;margin-top:4px;"><div style="background:${color};width:${pct}%;height:8px;border-radius:4px;"></div></div>`;
+            };
+            cov.innerHTML = `
+                <table class="table">
+                    <thead><tr><th>Dimension</th><th>Coverage</th><th>Count</th><th>Missing</th></tr></thead>
+                    <tbody>
+                        <tr><td>Analysis</td><td>${bar(s.analysis_pct)} ${s.analysis_pct}%</td><td>${s.with_analysis}/${s.with_vfs} extractable</td><td>${s.missing_analysis > 0 ? '<span style="color:var(--warning)">' + s.missing_analysis + '</span>' : '—'}</td></tr>
+                        <tr><td>Signals</td><td>${bar(s.signals_pct)} ${s.signals_pct}%</td><td>${s.with_signals}/${s.with_vfs} extractable</td><td>${s.missing_signals > 0 ? '<span style="color:var(--warning)">' + s.missing_signals + '</span>' : '—'}</td></tr>
+                        <tr><td>Token Usage</td><td>${bar(s.tokens_pct)} ${s.tokens_pct}%</td><td>${s.with_tokens}/${s.with_vfs} extractable</td><td>—</td></tr>
+                        <tr><td>Embeddings</td><td>${bar(s.embeddings_pct)} ${s.embeddings_pct}%</td><td>${s.with_embeddings}/${s.total}</td><td>—</td></tr>
+                    </tbody>
+                </table>
+                <div style="margin-top:8px;font-size:12px;color:var(--text-tertiary);">
+                    Totals: ${d.totals?.exchanges||0} exchanges &nbsp;·&nbsp; ${d.totals?.signals||0} signals &nbsp;·&nbsp; ${d.totals?.symbols||0} symbols &nbsp;·&nbsp; ${d.totals?.recommendations||0} recommendations &nbsp;·&nbsp; ${d.totals?.alerts||0} alerts
+                </div>
+            `;
+        }
+    }).catch(() => {
+        const cards = document.getElementById('pipeline-status-cards');
+        if (cards) cards.innerHTML = '<div class="alert alert-danger">Could not load pipeline status</div>';
+    });
 
+    // Load PMF services
     const container = document.getElementById('pmf-services');
     if (!container) return;
     container.innerHTML = '<div class="spinner"></div> Loading runtime services...';

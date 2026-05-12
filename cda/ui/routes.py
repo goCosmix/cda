@@ -128,6 +128,13 @@ def application(environ, start_response):
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]
 
+        elif path == '/api/pipeline/status' and method == 'GET':
+            from cda.pipeline.backfill import get_pipeline_status
+            data = get_pipeline_status()
+            response = json.dumps(data).encode('utf-8')
+            start_response('200 OK', [('Content-Type', 'application/json')])
+            return [response]
+
         elif path == '/api/pmf/services' and method == 'GET':
             try:
                 services = kernel.services()

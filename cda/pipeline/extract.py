@@ -445,33 +445,70 @@ def _is_code_file(source_path: str) -> bool:
 def build_symbol_index(conn):
     print("\nBuilding code symbol index...")
     conn.execute("DELETE FROM symbols")
-    rows = conn.execute(
-        "SELECT workspace_id, source_path, content FROM vfs"
-    ).fetchall()
+
+    # Build a hash → content_blob map from edit_content rows
+    content_by_hash = {}
+    for filename, content_blob in conn.execute(
+        "SELECT filename, content FROM vfs WHERE source_type='edit_content'"
+    ).fetchall():
+        if filename:
+            content_by_hash[filename] = content_blob
+
+    # Parse edit_state rows to extract real file paths → content hashes
+    file_entries = []  # list of (workspace_id, real_file_path, content_hash)
+    for workspace_id, blob in conn.execute(
+        "SELECT workspace_id, content FROM vfs WHERE source_type='edit_state'"
+    ).fetchall():
+        try:
+            import json as _json
+            data = _json.loads(_decode_vfs_text(blob) or "{}")
+            entries = data.get("recentSnapshot", {}).get("entries", [])
+            for entry in entries:
+                resource = entry.get("resource", "")
+                content_hash = entry.get("currentHash", "") or entry.get("originalHash", "")
+                if resource and content_hash:
+                    # Strip file:// scheme
+                    if resource.startswith("file://"):
+                        resource = resource[7:]
+                    file_entries.append((workspace_id, resource, content_hash))
+        except Exception:
+            continue
+
     symbols = []
     indexed_at = int(datetime.utcnow().timestamp() * 1000)
-    for workspace_id, source_path, content_blob in rows:
-        if not _is_code_file(source_path or ""):
+    seen = set()
+
+    for workspace_id, file_path, content_hash in file_entries:
+        if not _is_code_file(file_path):
             continue
-        text = _decode_vfs_text(content_blob)
+        key = (file_path, content_hash)
+        if key in seen:
+            continue
+        seen.add(key)
+        blob = content_by_hash.get(content_hash)
+        if not blob:
+            continue
+        text = _decode_vfs_text(blob)
         if not text:
             continue
-        for sym in extract_code_symbols(source_path, text):
+        for sym in extract_code_symbols(file_path, text):
             symbols.append((
                 workspace_id,
-                source_path,
+                file_path,
                 sym['symbol_name'],
                 sym['symbol_type'],
                 sym['line_number'],
                 sym['context'],
                 indexed_at,
             ))
+
     if symbols:
         conn.executemany(
             "INSERT INTO symbols(workspace_id, file_path, symbol_name, symbol_type, line_number, context, indexed_at) VALUES (?,?,?,?,?,?,?)",
             symbols
         )
     conn.commit()
+    print(f"  indexed {len(symbols)} symbols from {len(seen)} unique code files")
 
 
 def ensure_schema(conn):

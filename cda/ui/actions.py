@@ -48,6 +48,20 @@ def run_action_background(action_id, action_name):
                 text=True,
                 timeout=30
             )
+        elif action_name == "backfill":
+            result = subprocess.run(
+                [sys.executable, "-m", "cda.pipeline.backfill"],
+                capture_output=True,
+                text=True,
+                timeout=600
+            )
+        elif action_name == "symbol-index":
+            result = subprocess.run(
+                [sys.executable, "-m", "cda.pipeline.backfill", "--symbols-only"],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
         else:
             result = None
 

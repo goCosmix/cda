@@ -340,23 +340,29 @@ def render_pipeline():
     return """
     <div class="page-header">
         <div class="page-title">Pipeline</div>
-        <div class="page-subtitle">Execute and monitor data pipeline commands.</div>
+        <div class="page-subtitle">Data pipeline health, coverage, and backfill controls.</div>
+    </div>
+    <div id="pipeline-status-cards" class="stats-grid mb-20">
+        <div class="spinner"></div>
     </div>
     <div class="card mb-20">
-        <div class="card-header">Available Commands</div>
+        <div class="card-header">Coverage</div>
+        <div id="pipeline-coverage">
+            <div class="spinner"></div>
+        </div>
+    </div>
+    <div class="card mb-20">
+        <div class="card-header">Commands</div>
         <div class="button-group">
-            <button class="button button-primary" onclick="runAction('sync')">Full Sync</button>
-            <button class="button button-primary" onclick="runAction('reconstruct')">Reconstruct</button>
-            <button class="button button-primary" onclick="runAction('embed-build')">Build Embeddings</button>
+            <button class="button button-primary" onclick="runAction('backfill')">Backfill Missing</button>
+            <button class="button button-secondary" onclick="runAction('symbol-index')">Rebuild Symbols</button>
+            <button class="button button-secondary" onclick="runAction('sync')">Full Sync</button>
+            <button class="button button-secondary" onclick="runAction('reconstruct')">Reconstruct</button>
+            <button class="button button-secondary" onclick="runAction('embed-build')">Build Embeddings</button>
         </div>
         <p style="font-size: 12px; color: var(--text-tertiary); margin-top: 10px;">
-            These commands can take several minutes to complete.
+            Backfill processes sessions missing signals/analysis. Commands run in the background.
         </p>
-    </div>
-    <div id="action-status" class="hidden">
-        <div class="alert alert-info">
-            <strong>Status:</strong> <span id="status-text">Running...</span>
-        </div>
     </div>
     <div class="card mb-20">
         <div class="card-header">Runtime Services</div>

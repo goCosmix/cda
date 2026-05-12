@@ -740,7 +740,7 @@ def eak_check(notify):
     click.echo(hr())
     w = result["watcher"]
     q = result["queue"]
-    watcher_str = green(f"running  pid={w['pid']}") if w["healthy"] else red(f"DOWN  ({w.get('reason','?')})")
+    watcher_str = green(f"running  pid={w['pid']}") if w["healthy"] else red(f"DOWN  ({w.get('reason', '?')})")
     click.echo(f"  {'Watcher':<16} {watcher_str}")
     q_level = q["level"]
     q_str = f"{q['pending']} pending"

@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Code Data Ark is a multi-stage data pipeline that transforms raw VS Code storage data into actionable intelligence about user-AI interactions.
+Code Data Ark is a multi-stage data pipeline that transforms raw VS Code storage data into actionable intelligence about user-AI interactions. It measures both the human side (behavioral signals: frustration, corrections, redirects) and the AI side (cognitive quality signals: evidence-grounding, assumption-surfacing, self-correction).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -81,12 +81,32 @@ Code Data Ark is a multi-stage data pipeline that transforms raw VS Code storage
                    │
                    ▼
         ┌──────────────────────────┐
+        │   REASONING STAGE        │
+        │  (cda/pipeline/reasoning.py)
+        │                          │
+        │ - AI output signals      │
+        │ - Extended thinking      │
+        │ - Cognitive score        │
+        │ - Contradiction detect   │
+        └──────────┬───────────────┘
+                   │
+        ┌──────────▼──────────┐
+        │   SQLite Database   │
+        │                     │
+        │ - reasoning_signals │
+        │ - reasoning_score   │
+        │   (session_analysis)│
+        └──────────┬──────────┘
+                   │
+                   ▼
+        ┌──────────────────────────┐
         │   LIVE MONITORING        │
         │   (cda/pipeline/watcher.py) │
         │                          │
         │ - Watch file changes     │
         │ - Queue operations       │
         │ - Incremental updates    │
+        │ - Periodic health checks │
         │ - Maintain FTS index     │
         └──────────┬───────────────┘
                    │
@@ -95,7 +115,7 @@ Code Data Ark is a multi-stage data pipeline that transforms raw VS Code storage
         │   QUERY INTERFACE        │
         │   (cda CLI)              │
         │                          │
-        │ - 40+ commands           │
+        │ - 50+ commands           │
         │ - Policy filtering       │
         │ - Rich output formatting │
         └──────────────────────────┘
@@ -103,26 +123,28 @@ Code Data Ark is a multi-stage data pipeline that transforms raw VS Code storage
                    ▼
         ┌──────────────────────────┐
         │   LOCAL RUNTIME          │
-        │   (PMF Lite)             │
+        │   (EAK Kernel)           │
         │                          │
         │ - Service lifecycle      │
         │ - Local status + logs    │
-        │ - UI monitoring bridge   │
+        │ - Health checks + alerts │
         └──────────────────────────┘
 ```
 
-## PMF Embedded Kernel — Embedded Runtime Management
+## EAK Embedded Kernel — Embedded Runtime Management
 
-The PMF Embedded Kernel is Ark's local embedded runtime layer. It is not the full federation control plane; instead, it is a package-embedded process management framework that supervises Ark services such as the watcher daemon, web UI, ingest pipeline, reconstruction, and semantic embedding tasks.
+The EAK (Embedded App Kernel) is Ark's local embedded runtime layer. It is a two-layer split:
 
-Key PMF Lite responsibilities:
+- **`kernel_core.py`** — shared bottom layer: service lifecycle, start/stop/restart, PID tracking, state JSON, event journal, run_count, task completion threads. Shared DNA across all goCosmix embedded kernels.
+- **`eak_kernel.py`** — cda-specific top layer: 7 service definitions (watcher, ui, sync, reconstruct, embed-build, backfill, symbol-index), launchd integration, browser helpers.
+- **`pmf_kernel.py`** — backwards-compat shim; re-exports all EAK names so legacy callers work unchanged.
+
+Key EAK responsibilities:
 - Manage service lifecycle with PID files, background subprocesses, and log files.
-- Expose local service state for CLI and UI control.
-- Persist runtime metadata and health status for robustness.
-- Provide a lightweight event/bus surface for runtime actions and alerts.
-- Keep the package self-contained while enabling a UI-driven monitoring experience.
-
-This design keeps Ark as a "mini OS" for its own services rather than a federation master. It can later evolve to interoperate with a full PMF control plane by mapping local services to federated node concepts, but the initial implementation remains focused on local embedded control.
+- Expose local service state for CLI and UI control via `cda eak` commands.
+- Persist runtime metadata and health status in `local/eak/runtime.json`.
+- Provide a lightweight event journal for runtime actions and alerts.
+- Run periodic health checks (watcher liveness, queue depth) with macOS notifications via `alerting.py`.
 
 ## Data Flow Details
 
@@ -169,16 +191,34 @@ This design keeps Ark as a "mini OS" for its own services rather than a federati
 
 ```python
 # Key operations
-1. Pattern match 200+ keywords against messages
-2. Classify signals (correction, frustration, etc.)
+1. Pattern match 200+ keywords against user messages
+2. Classify signals (correction, frustration, pre_correction, redirect, etc.)
 3. Calculate heat score (weighted sum, 0-100)
 4. Track token usage per request
 5. Detect context compaction events
-6. Aggregate per-session metrics
+6. Aggregate per-session metrics into session_analysis
 ```
 
 **Signals**: 6 types with 200+ keywords
 **Heat Formula**: min(100, Σ(weight × count))
+
+### Stage 3b: Reasoning Analysis (reasoning.py)
+
+**Input**: `transcript_events` rows where `event_type='assistant.message'`
+**Output**: AI cognitive quality signals, per-session reasoning_score
+
+```python
+# Key operations
+1. Read assistant content + reasoningText (extended thinking) per message
+2. Pattern match 10 signal types against AI output
+3. Detect cross-message contradictions
+4. Compute weighted cognitive score (0-100)
+5. Store per-match rows in reasoning_signals
+6. Upsert reasoning_score into session_analysis
+```
+
+**Signal axes**: epistemic virtue, process transparency, failure modes
+**Score formula**: min(100, max(0, Σ(signal_count × weight)))
 
 ### Stage 4: Live Monitoring (watcher.py)
 
@@ -190,9 +230,10 @@ This design keeps Ark as a "mini OS" for its own services rather than a federati
 1. Monitor VS Code directories for changes
 2. Queue operations before committing
 3. Replay queue on restart (crash resilience)
-4. Incremental database updates
+4. Incremental database updates (extract + reasoning + embed per session)
 5. Maintain FTS index
-6. Track operation status
+6. Periodic health checks every 300s (watcher liveness, queue depth)
+7. Fire macOS notifications on WARN/CRIT thresholds
 ```
 
 **Queue**: File-based JSON persistence
@@ -260,7 +301,7 @@ fts_exchanges USING fts5(
   content=exchanges
 )
 
--- Behavioral Analysis
+-- Behavioral Analysis (user signals)
 exchange_signals(
   session_id TEXT,
   exchange_index INTEGER,
@@ -268,6 +309,17 @@ exchange_signals(
   matched_keyword TEXT,
   user_message TEXT,
   ts TEXT
+)
+
+-- AI Cognitive Quality Signals
+reasoning_signals(
+  id INTEGER PRIMARY KEY,
+  session_id TEXT,
+  request_id TEXT,
+  ts TEXT,
+  signal_type TEXT,  -- "metacognitive", "evidence_grounded", "false_certainty", etc.
+  excerpt TEXT,      -- matched text snippet
+  valence INTEGER    -- +1 positive, -1 negative
 )
 
 session_analysis(
@@ -288,7 +340,9 @@ session_analysis(
   total_tokens_completion INTEGER,
   compaction_count INTEGER,
   model_ids TEXT,
-  analysis_date INTEGER
+  reasoning_score INTEGER,        -- AI cognitive quality score (0-100)
+  reasoning_analyzed_at TEXT,
+  analyzed_at TEXT
 )
 
 -- Code Symbols
@@ -351,7 +405,21 @@ cda
 │   └── vfs            # VFS operations
 │
 ├── Management
-│   ├── watch          # Daemon control
+│   ├── eak            # EAK kernel control (canonical)
+│   │   ├── services
+│   │   ├── status
+│   │   ├── start
+│   │   ├── stop
+│   │   ├── restart
+│   │   ├── logs
+│   │   ├── events
+│   │   ├── check
+│   │   ├── up
+│   │   ├── down
+│   │   ├── install
+│   │   └── uninstall
+│   ├── pmf            # Alias for eak (backwards compat)
+│   ├── watch          # Daemon control (legacy direct)
 │   │   ├── start
 │   │   ├── stop
 │   │   └── restart
@@ -421,15 +489,21 @@ cda
 
 ## Extension Points
 
-### Adding New Signal Types
+### Adding New Signal Types (user behavioral)
 
 1. Add keyword list to `SIGNAL_PATTERNS` in `extract.py`
 2. Update `HEAT_WEIGHT` if needed
-3. Re-run `extract.py`
+3. Re-run `cda backfill --force` to retroactively apply
+
+### Adding New Reasoning Signal Types (AI output)
+
+1. Add compiled regex pattern to `REASONING_SIGNAL_PATTERNS` in `reasoning.py`
+2. Set weight in same tuple (positive = virtue, negative = failure)
+3. Re-run `cda backfill --force`
 
 ### Custom Analysis
 
-1. Query `session_analysis` or `exchange_signals` directly
+1. Query `session_analysis`, `exchange_signals`, or `reasoning_signals` directly
 2. Write analysis to results table
 3. Export via `cda query` or `cda export`
 
@@ -443,25 +517,26 @@ cda
 
 ### Development
 ```bash
-make install-dev
-make test
-make format
+pip install -e .
+python3 /Volumes/intel/systems/cda/control/scripts/vet.py  # vet checks
+dev check --project . --compile --tests --lint              # full check
 cda sync
+cda eak up
 ```
 
 ### Production
 ```bash
 pip install -e .
-cda sync           # Initial setup
-cda watch start    # Start monitoring
-cda status         # Verify
+cda setup          # init + eak install + sync + up
+cda eak check      # verify health
 ```
 
 ### Monitoring
 ```bash
-cda status         # Check daemon
-cda stats          # System health
-cda query "SELECT COUNT(*) FROM sessions"  # Activity
+cda eak check              # watcher liveness + queue depth
+cda eak services           # all service statuses
+cda stats                  # system health
+cda query "SELECT COUNT(*) FROM sessions"  # activity
 ```
 
 ## Troubleshooting
@@ -497,7 +572,8 @@ sqlite3 cda.db "VACUUM; ANALYZE;"
 ## Future Architecture
 
 - **Streaming**: Real-time result streaming for large operations
-- **Federation**: Connect to external nodes via PMF
+- **Federation**: Connect to external nodes via PMF control plane
+- **Reasoning UI**: Web UI panels showing AI cognitive quality trends per session
 - **Caching**: Redis-backed query cache
 - **Clustering**: Sharded databases for massive scale
 - **ML Integration**: Anomaly detection daemon

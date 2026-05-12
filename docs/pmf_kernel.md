@@ -1,98 +1,146 @@
-# PMF Embedded Kernel
+# EAK Embedded Kernel
+
+> Note: The original name for this layer was PMF. `cda pmf` commands and `PMFKernel` are
+> backwards-compat aliases. The canonical name is EAK everywhere going forward.
 
 ## Purpose
 
-The PMF Embedded Kernel is Ark's embedded process management framework. It sits between the application and the host environment and provides a local runtime kernel for Ark services.
+The EAK (Embedded App Kernel) is Ark's local embedded runtime layer. It manages the lifecycle
+of all Ark background services — watcher daemon, web UI, and pipeline tasks — as a self-contained
+process kernel embedded in the package.
 
 It is intentionally:
 
 - lightweight and local
 - not a full federation control plane
-- a reusable seed for future standalone apps
+- a reusable seed for other goCosmix apps (shared via `kernel_core.py`)
 - a host-agnostic boundary for process lifecycle and health
 
 ## Architecture
 
-The kernel consists of three layers:
+The kernel is split into two layers:
 
-1. **Kernel core**
-   - Service registry
-   - Lifecycle management
-   - Runtime state persistence
-   - Local event/bus surface
+### 1. `kernel_core.py` — Shared Bottom Layer
 
-2. **Ark service definitions**
-   - watcher daemon
-   - web UI daemon
-   - sync task
-   - reconstruct task
-   - embed-build task
+Shared DNA across all goCosmix embedded kernels. Extracted to allow dev/other systems to reuse.
 
-3. **Host adapter**
-   - local process management via subprocess
-   - PID file and log file handling
-   - runtime status detection
-   - action invocation and task supervision
+- Service registry and lifecycle management (start/stop/restart)
+- PID file and log file tracking
+- Runtime state persistence (`local/eak/runtime.json`)
+- Event journal (`_emit_event`, stored in state)
+- Run count tracking
+- Task completion watcher thread (updates state to `completed`/`failed` when process exits)
 
-## Service contract
+### 2. `eak_kernel.py` — CDA-Specific Top Layer
 
-Each service is defined by:
+Extends `KernelCore` with cda-specific service definitions and host integration.
 
-- `service_id`
-- `label`
-- `service_type` (`daemon` or `task`)
-- `description`
-- `command`
-- `cwd`
-- `env`
-- `pid_file` (for daemons)
-- `log_file`
-- allowed actions (`start`, `stop`, `restart`, `status`)
+**7 services:**
 
-## Runtime state
+| Service | Type | Description |
+|---------|------|-------------|
+| `watcher` | daemon | Live VS Code data watcher and incremental ingest pipeline |
+| `ui` | daemon | Background web UI server on port 10001 |
+| `sync` | task | Full ingest pipeline run |
+| `reconstruct` | task | Rebuild exchanges and FTS index |
+| `embed-build` | task | Build semantic embeddings |
+| `backfill` | task | Re-run extract + reasoning + embed over historical sessions |
+| `symbol-index` | task | Build code symbol index |
 
-Runtime state is stored in `local/pmf/runtime.json` and is intentionally ignored by source control.
+**Host integration:**
+- `up(host, port)` / `down()` — start/stop watcher + UI in order
+- `generate_plist()` / `install_launchd()` / `uninstall_launchd()` — macOS LaunchAgent
+- `open_browser_when_ready()` — waits for UI port then opens browser
 
-Each service state contains:
+### 3. `pmf_kernel.py` — Backwards-Compat Shim
 
-- `service_id`
-- `status`
-- `pid`
-- `exit_code`
-- `started_at`
-- `updated_at`
-- `last_error`
+35-line shim. `PMFKernel(EAKKernel)`, `PMFKernelError(EAKKernelError)`, all helper
+functions re-exported from `eak_kernel`. Existing code using PMF names works unchanged.
 
-## CLI integration
+## Service Contract
 
-New `cda pmf` commands provide kernel control:
+Each service is defined by a spec dict:
 
-- `cda pmf services`
-- `cda pmf status [service]`
-- `cda pmf start <service>`
-- `cda pmf stop <service>`
-- `cda pmf restart <service>`
-- `cda pmf logs <service>`
+```python
+{
+    "service_id": "watcher",
+    "label": "Watcher Daemon",
+    "service_type": "daemon",       # or "task"
+    "description": "Live VS Code data watcher",
+    "command": [sys.executable, "-m", "cda.pipeline.watcher"],
+    "cwd": str(CDA_HOME),
+    "env": {},
+    "pid_file": str(CDA_HOME / "watcher.pid"),   # daemons only
+    "log_file": str(CDA_HOME / "logs/watcher.log"),
+}
+```
 
-The `cda watch` and `cda ui` commands are now implemented through the PMF kernel.
+## Runtime State
 
-## Web UI integration
+State is persisted in `local/eak/runtime.json` (gitignored). Per-service state:
 
-The web UI can query the kernel for runtime service status and execute service actions through API endpoints.
+```json
+{
+  "status": "running",
+  "pid": 12345,
+  "exit_code": null,
+  "started_at": "2026-05-12T10:00:00",
+  "updated_at": "2026-05-12T10:00:01",
+  "run_count": 3,
+  "last_error": null
+}
+```
 
-Planned API surface:
+Task services update `status` to `"completed"` or `"failed"` automatically when the
+subprocess exits (background completion thread in `kernel_core.py`).
 
-- `/api/pmf/services`
-- `/api/pmf/service?action=start|stop|restart&service=<id>`
-- `/api/pmf/logs?service=<id>&tail=<n>`
+## Health Monitoring (`alerting.py`)
 
-## Future extension
+`cda/pipeline/alerting.py` provides:
 
-The PMF Embedded Kernel is designed to grow into a more general embedded app kernel.
+- `check_watcher_health()` — PID file present + `os.kill(pid, 0)` alive probe
+- `check_queue_depth()` — counts `*.json` (pending) vs `*.completed` in QUEUE_DIR
+  - WARN threshold: 50 pending
+  - CRIT threshold: 200 pending
+- `send_notification(title, message, subtitle)` — macOS osascript, silent on failure
+- `run_health_check(notify=True)` — aggregates both, fires notifications for issues
 
-Future work includes:
+Watcher calls `run_health_check()` every 300s automatically. `cda eak check` runs it on demand.
 
-- adding a local bus for runtime events and alerts
-- providing a plugin interface for additional app services
-- supporting federation adapters that map local services into a broader control plane
-- enabling standalone applications built on the same kernel contract
+## CLI Integration
+
+`cda eak` commands (canonical):
+
+```bash
+cda eak services           # List all services with status and PID
+cda eak status [service]   # Show runtime status
+cda eak start <service>    # Start a service
+cda eak stop <service>     # Stop a service
+cda eak restart <service>  # Restart a service
+cda eak logs <service>     # Tail the service log
+cda eak events             # Show kernel event journal
+cda eak check              # Health check: watcher liveness + queue depth
+cda eak up                 # Start watcher + UI (opens browser)
+cda eak down               # Stop UI + watcher in order
+cda eak install            # Register LaunchAgent
+cda eak uninstall          # Remove LaunchAgent
+```
+
+`cda pmf <command>` — identical alias for all of the above.
+
+## LaunchAgent
+
+Installed at `~/Library/LaunchAgents/com.gocosmix.cda.plist`. Entry point:
+
+```
+cda eak up
+```
+
+Reinstall after any entry-point change: `cda eak uninstall && cda eak install`.
+
+## Future Extension
+
+- Local bus for runtime events and alerts
+- Plugin interface for additional app services
+- Federation adapters mapping local services to a broader control plane
+

@@ -6,8 +6,9 @@ This roadmap captures the product direction for Code Data Ark, with a focus on d
 
 Code Data Ark is the local observability and intelligence layer for Copilot Chat sessions. It should make session behavior easy to understand, surface friction, and provide rapid search and review for developers who want to improve AI-assisted workflows.
 
-## Near-Term Priorities (2.0.x)
+## Near-Term Priorities (2.1.x)
 
+- Web UI panels showing `reasoning_score` trends and signal breakdowns per session.
 - Stabilize `cda` CLI and watcher daemon reliability across VS Code data path changes.
 - Expand web UI session drilldown: richer alerts, recommendation panels, and tool-call inspection.
 - Improve semantic search quality: better embedding workflows and topic clustering.
@@ -33,6 +34,10 @@ Code Data Ark is the local observability and intelligence layer for Copilot Chat
 - `v0.1.1` delivered the professional web UI session drawer, structured data panels, alert and tool-call tables, and complete package distribution of web UI assets.
 - `v0.1.2` delivered release automation, version sync tooling, packaging metadata consolidation, and documentation cleanup.
 - `v2.0.0` delivered the PMF Embedded Kernel for service lifecycle management, 3-layer repo structure (source/local/control), full package reorganization into pipeline/ui/kernel subpackages, and system-wide cleanup.
+- `v2.0.13` delivered the backfill pipeline and symbol index; session heat scoring expanded with frustration, pre_correction signal types.
+- `v2.0.14` delivered the EAK kernel architecture: `kernel_core.py` shared DNA, `eak_kernel.py` CDA-specific layer, `pmf_kernel.py` backwards-compat shim, `cda eak` CLI group with 11 commands.
+- `v2.0.15` delivered `alerting.py` (health checks + macOS notifications), `cda eak check`, task completion state tracking, watcher periodic health checks.
+- `v2.0.16` delivered the cognitive scaffold: `reasoning.py` AI output signal layer, 10 signal types, cognitive score per session, extended thinking analysis, `reasoning_signals` table, wired into watcher + backfill. Cognitive constitution (`copilot-instructions.md`) encoding 10 epistemic obligations.
 
 ## PMF Embedded Kernel — Shipped in v2.0.0
 
@@ -64,7 +69,11 @@ The following items were still listed as `Unreleased` in `CHANGELOG.md` and have
 - `v0.1.x`: Core pipeline, CLI, web UI, packaging, FTS search. ✓
 - `v2.0.0`: PMF Embedded Kernel, 3-layer repo architecture (source/local/control), pipeline/ui/kernel subpackage split. ✓
 - `v2.0.2`: Repo hygiene fixes, audit-engine integration, control-plane vet system. ✓
-- `v2.1.0`: Enhanced semantic search, richer UI drilldown, broader analytics coverage.
+- `v2.0.13`: Backfill pipeline, symbol index, expanded signal taxonomy (frustration, pre_correction). ✓
+- `v2.0.14`: EAK kernel architecture (kernel_core + eak_kernel split), `cda eak` CLI group. ✓
+- `v2.0.15`: Health checks, alerting, task completion state, `cda eak check`. ✓
+- `v2.0.16`: AI cognitive quality signal layer (reasoning.py), cognitive score, cognitive constitution. ✓
+- `v2.1.0`: Enhanced semantic search, richer UI drilldown (reasoning scores visible), broader analytics coverage.
 - `v3.0.0`: Federation, stable API, polished distribution.
 
 ## Metrics for Success

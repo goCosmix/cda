@@ -22,8 +22,6 @@ cd cda/source
 
 ```bash
 pip install -e ".[dev]"
-# or
-make install-dev
 ```
 
 ### Create a Feature Branch
@@ -38,9 +36,7 @@ git checkout -b feature/your-feature-name
 
 1. Make your changes in the feature branch
 2. Add or update tests for new functionality
-3. Ensure all tests pass: `make test`
-4. Format code: `make format`
-5. Run linters: `make lint`
+3. Vet before pushing (see [Before Pushing](#before-pushing))
 
 ### Writing Tests
 
@@ -107,12 +103,30 @@ Add policy enforcement to search results
 Fixes #42
 ```
 
+## Before Pushing
+
+Run the full vet before every push. All three checks must pass:
+
+```bash
+# From cda/source/
+python3 /Volumes/intel/systems/cda/control/scripts/vet.py
+dev check --project . --compile --tests --lint
+dev pf --project . --full
+```
+
+Verify CI after pushing:
+
+```bash
+gh run list --repo goCosmix/cda --limit 1
+gh run view <run-id>
+```
+
 ## Pull Request Process
 
 1. **Update documentation** - Update README or docs if needed
 2. **Add tests** - Ensure new functionality has test coverage
-3. **Update CHANGELOG** - Add entry under "Unreleased" section
-4. **Verify quality** - Run `make test && make lint && make format`
+3. **Update CHANGELOG** - Add entry under latest version section
+4. **Verify quality** - Run vet.py and dev check (see above)
 5. **Create PR** - Provide clear description of changes
 6. **Respond to reviews** - Address feedback promptly
 
@@ -180,7 +194,9 @@ cda/
 │   │   │   ├── cli.py
 │   │   │   └── web.py
 │   │   └── kernel/          # system management
-│   │       ├── pmf_kernel.py
+│   │       ├── kernel_core.py   # shared lifecycle DNA
+│   │       ├── eak_kernel.py    # cda-specific services
+│   │       ├── pmf_kernel.py    # backwards-compat shim
 │   │       └── selfcheck.py
 │   ├── bin/
 │   │   └── release.py       # version sync and release automation
@@ -194,7 +210,7 @@ cda/
 │   ├── queue/
 │   ├── run/             # pid files
 │   ├── config/
-│   └── pmf/             # pmf runtime state
+│   └── eak/             # eak runtime state
 └── control/             # management artifacts (gitignored)
     ├── data/            # control.db
     ├── scripts/         # seed.py
@@ -220,7 +236,10 @@ cda/
 - **pipeline/parse_edits.py**: Parses edit session information
 
 ### System Management
-- **kernel/pmf_kernel.py**: Service lifecycle, PID/log management, runtime state
+- **kernel/kernel_core.py**: Shared lifecycle DNA — service registry, PID/log management, runtime state, event journal
+- **kernel/eak_kernel.py**: CDA-specific kernel — 7 service definitions, launchd integration, health checks
+- **kernel/pmf_kernel.py**: Backwards-compat shim, re-exports EAK names
+- **pipeline/alerting.py**: Health checks, queue depth monitoring, macOS push notifications
 - **kernel/selfcheck.py**: System health checks and install validation
 - **ui/web.py**: Browser dashboard for all CLI features
 
@@ -239,13 +258,13 @@ cda/
 ### Running Tests
 
 ```bash
-# Run all tests
-make test
+# Full vet (lint + typecheck + test)
+python3 /Volumes/intel/systems/cda/control/scripts/vet.py
 
-# Run with coverage
-make test-cov
+# Dev check (compile + tests + lint)
+dev check --project . --compile --tests --lint
 
-# Run specific test
+# Run a specific test directly
 python -m pytest tests/test_basic.py::test_signal_patterns_import -v
 ```
 

@@ -660,6 +660,11 @@ def main():
                     c2.execute("DELETE FROM exchange_signals WHERE session_id=?", (session_id,))
                     extract.process_session(c2, session_id, blob_row[0])
                     extract.build_session_analysis(c2, session_id)
+                    try:
+                        from cda.pipeline import reasoning as _reasoning
+                        _reasoning.build_session_reasoning(c2, session_id)
+                    except Exception as _rex:
+                        log.warning(f"reasoning pass failed for {session_id[:8]}: {_rex}")
                     c2.commit()
                     try:
                         embed = importlib.import_module('cda.pipeline.embed')

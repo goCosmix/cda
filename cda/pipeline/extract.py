@@ -602,6 +602,14 @@ def ensure_schema(conn):
         conn.execute("ALTER TABLE session_analysis ADD COLUMN clean_run INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("ALTER TABLE session_analysis ADD COLUMN reasoning_score INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE session_analysis ADD COLUMN reasoning_analyzed_at TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
 
 
@@ -995,6 +1003,14 @@ def run():
     """)
     try:
         conn.execute("ALTER TABLE session_analysis ADD COLUMN clean_run INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE session_analysis ADD COLUMN reasoning_score INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE session_analysis ADD COLUMN reasoning_analyzed_at TEXT")
     except sqlite3.OperationalError:
         pass
     conn.commit()

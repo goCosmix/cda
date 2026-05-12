@@ -72,6 +72,12 @@ def backfill_session(conn, session_id, verbose=True):
     # Re-extract
     n_signals, n_tokens, n_compactions = extract.process_session(conn, session_id, blob_row[0])
     extract.build_session_analysis(conn, session_id)
+    try:
+        from cda.pipeline import reasoning as _reasoning
+        _reasoning.build_session_reasoning(conn, session_id)
+    except Exception as ex:
+        if verbose:
+            print(f"  warn  reasoning pass failed for {session_id[:8]}: {ex}")
     conn.commit()
 
     # Re-embed

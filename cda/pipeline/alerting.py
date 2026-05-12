@@ -15,8 +15,7 @@ Thresholds:
 import json
 import os
 import subprocess
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from cda.kernel.paths import PID_FILE, QUEUE_DIR
 

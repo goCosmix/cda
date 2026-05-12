@@ -668,7 +668,9 @@ def main():
                     c2.commit()
                     try:
                         embed = importlib.import_module('cda.pipeline.embed')
-                        importlib.reload(embed)
+                        # Do NOT reload — embed.py caches the SentenceTransformer model
+                        # as a module-level singleton; reloading resets it and re-loads
+                        # the 80MB model from disk on every transcript change.
                         embed.build_session_intelligence(c2, session_id)
                         c2.commit()
                     except Exception as ex2:

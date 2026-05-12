@@ -66,6 +66,7 @@ import textwrap
 import datetime
 from pathlib import Path
 from cda.pipeline.reconstruct import decompress_vfs
+from cda.kernel.kernel_core import KernelCoreError
 from cda.kernel.pmf_kernel import (
     PMFKernel, PMFKernelError,
     install_launchd, uninstall_launchd, plist_path,
@@ -597,8 +598,12 @@ def pmf_up(host, port, no_browser):
     try:
         result = kernel.start_service("watcher")
         click.echo(green(f"  Watcher      started  pid={result['pid']}"))
-    except PMFKernelError as exc:
-        click.echo(yellow(f"  Watcher      {exc}"))
+    except (PMFKernelError, KernelCoreError) as exc:
+        msg = str(exc)
+        if "already running" in msg.lower():
+            click.echo(green(f"  Watcher      already running"))
+        else:
+            click.echo(yellow(f"  Watcher      {exc}"))
 
     try:
         result = kernel.start_service("ui", options={"host": host, "port": port})
@@ -606,8 +611,12 @@ def pmf_up(host, port, no_browser):
         if not no_browser:
             click.echo(dim("  Opening browser when server is ready..."))
             wait_for_port_and_open_browser(url, host, port)
-    except PMFKernelError as exc:
-        click.echo(yellow(f"  Web UI       {exc}"))
+    except (PMFKernelError, KernelCoreError) as exc:
+        msg = str(exc)
+        if "already running" in msg.lower():
+            click.echo(green(f"  Web UI       already running  →  {url}"))
+        else:
+            click.echo(yellow(f"  Web UI       {exc}"))
 
     click.echo()
 

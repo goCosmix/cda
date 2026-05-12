@@ -1008,7 +1008,7 @@ def get_overview():
                 {("(SELECT AVG(heat_score) FROM session_analysis WHERE heat_score IS NOT NULL)" if has_analysis else "0")} as avg_heat,
                 {("(SELECT COUNT(*) FROM session_analysis WHERE heat_score >= 50)" if has_analysis else "0")} as critical_sessions,
                 {("(SELECT COUNT(*) FROM anomaly_alerts)" if has_alerts else "0")} as alert_count,
-                (SELECT COUNT(DISTINCT workspace_id) FROM sessions) as workspace_count,
+                (SELECT COUNT(*) FROM workspaces) as workspace_count,
                 (SELECT MAX(created_at) FROM sessions) as last_session
         """)
 
@@ -1041,10 +1041,11 @@ def get_overview():
             LIMIT 15
         """)) if has_signals else []
 
+        exchange_count_expr = "(SELECT COUNT(*) FROM exchanges WHERE exchanges.session_id = s.session_id)" if has_exchanges else "0"
         if has_analysis:
-            recent = safe_rows(query_rows("""
+            recent = safe_rows(query_rows(f"""
                 SELECT s.session_id as id, s.title, sa.heat_score,
-                       {("(SELECT COUNT(*) FROM exchanges WHERE exchanges.session_id = s.session_id)" if has_exchanges else "0")} as exchange_count,
+                       {exchange_count_expr} as exchange_count,
                        s.created_at
                 FROM sessions s
                 LEFT JOIN session_analysis sa ON sa.session_id = s.session_id
@@ -1052,9 +1053,9 @@ def get_overview():
                 LIMIT 10
             """))
         else:
-            recent = safe_rows(query_rows("""
+            recent = safe_rows(query_rows(f"""
                 SELECT s.session_id as id, s.title, NULL as heat_score,
-                       {("(SELECT COUNT(*) FROM exchanges WHERE exchanges.session_id = s.session_id)" if has_exchanges else "0")} as exchange_count,
+                       {exchange_count_expr} as exchange_count,
                        s.created_at
                 FROM sessions s
                 ORDER BY s.created_at DESC
@@ -1161,7 +1162,7 @@ def get_session_detail(session_id):
         signals = safe_rows(query_rows("""
             SELECT * FROM exchange_signals
             WHERE session_id = ?
-            ORDER BY created_at DESC
+            ORDER BY ts DESC
         """, (session_id,))) if has_signals else []
 
         signal_summary = safe_rows(query_rows("""
@@ -1195,18 +1196,20 @@ def get_search_results(query, limit=50):
     """Full-text search across exchanges."""
     try:
         results = query_rows("""
-            SELECT DISTINCT
-                s.id as session_id,
+            SELECT
+                e.session_id,
                 s.title,
-                s.heat_score,
+                sa.heat_score,
                 e.id as exchange_id,
-                e.user_input,
-                e.assistant_response,
-                RANK() OVER (ORDER BY rank) as relevance
-            FROM sessions s
-            JOIN exchanges e ON s.id = e.session_id
-            JOIN full_text_search fts ON e.id = fts.exchange_id
-            WHERE fts.full_text_search MATCH ?
+                e.exchange_index,
+                e.user_message,
+                e.response_text,
+                e.user_ts
+            FROM fts_exchanges fts
+            JOIN exchanges e ON fts.rowid = e.id
+            JOIN sessions s ON e.session_id = s.session_id
+            LEFT JOIN session_analysis sa ON sa.session_id = e.session_id
+            WHERE fts_exchanges MATCH ?
             ORDER BY rank
             LIMIT ?
         """, (query, limit))
@@ -1219,13 +1222,11 @@ def get_workspaces():
     """List all workspaces with session counts."""
     try:
         workspaces = query_rows("""
-            SELECT DISTINCT workspace_id,
-                   COUNT(*) as session_count,
-                   MAX(created_at) as last_session
-            FROM sessions
-            WHERE workspace_id IS NOT NULL
-            GROUP BY workspace_id
-            ORDER BY session_count DESC
+            SELECT w.workspace_id, w.uri, w.name, w.type, w.session_count,
+                   (SELECT MAX(s.created_at) FROM sessions s
+                    WHERE s.workspace_id = w.workspace_id) as last_session
+            FROM workspaces w
+            ORDER BY w.session_count DESC
         """)
         return {"workspaces": workspaces}
     except Exception as e:
@@ -1253,9 +1254,9 @@ def get_memory():
     """Get all memory files."""
     try:
         memory = query_rows("""
-            SELECT id, name, size, created_at, updated_at
+            SELECT id, scope, workspace_id, session_id, filename, size_bytes, ingested_at
             FROM memory_files
-            ORDER BY updated_at DESC
+            ORDER BY ingested_at DESC
         """)
         return {"memory": memory}
     except Exception as e:
@@ -1267,21 +1268,25 @@ def get_tool_calls(query_str=None, limit=50):
     try:
         if query_str:
             results = query_rows("""
-                SELECT tc.*, e.session_id, s.title as session_title
+                SELECT tc.id, tc.session_id, tc.exchange_index, tc.request_id,
+                       tc.tool_call_id, tc.tool_name, tc.file_path,
+                       tc.arguments_json, tc.has_output, tc.ingested_at,
+                       s.title as session_title
                 FROM tool_calls tc
-                JOIN exchanges e ON tc.exchange_id = e.id
-                JOIN sessions s ON e.session_id = s.id
-                WHERE tc.tool_name LIKE ? OR tc.arguments LIKE ?
-                ORDER BY tc.created_at DESC
+                JOIN sessions s ON tc.session_id = s.session_id
+                WHERE tc.tool_name LIKE ? OR tc.arguments_json LIKE ?
+                ORDER BY tc.ingested_at DESC
                 LIMIT ?
             """, (f"%{query_str}%", f"%{query_str}%", limit))
         else:
             results = query_rows("""
-                SELECT tc.*, e.session_id, s.title as session_title
+                SELECT tc.id, tc.session_id, tc.exchange_index, tc.request_id,
+                       tc.tool_call_id, tc.tool_name, tc.file_path,
+                       tc.arguments_json, tc.has_output, tc.ingested_at,
+                       s.title as session_title
                 FROM tool_calls tc
-                JOIN exchanges e ON tc.exchange_id = e.id
-                JOIN sessions s ON e.session_id = s.id
-                ORDER BY tc.created_at DESC
+                JOIN sessions s ON tc.session_id = s.session_id
+                ORDER BY tc.ingested_at DESC
                 LIMIT ?
             """, (limit,))
         return {"tool_calls": results, "query": query_str, "count": len(results)}
@@ -1293,10 +1298,11 @@ def get_vfs(session_id):
     """List VFS files for a session."""
     try:
         vfs = query_rows("""
-            SELECT id, session_id, path, size, created_at
+            SELECT id, session_id, source_type, source_path, filename,
+                   content_type, size_bytes, sha256, ingested_at
             FROM vfs
             WHERE session_id = ?
-            ORDER BY path
+            ORDER BY filename
         """, (session_id,))
         return {"vfs": vfs, "session_id": session_id}
     except Exception as e:
@@ -1354,17 +1360,26 @@ def get_tokens(session_id=None):
         if session_id:
             tokens = query_rows("""
                 SELECT
-                    SUM(CAST(json_extract(metadata, '$.token_count') AS INTEGER)) as total_tokens,
-                    COUNT(*) as exchange_count
-                FROM exchanges
+                    SUM(prompt_tokens) as total_prompt,
+                    SUM(completion_tokens) as total_completion,
+                    SUM(cached_tokens) as total_cached,
+                    SUM(prompt_tokens + completion_tokens) as total_tokens,
+                    COUNT(*) as turn_count,
+                    GROUP_CONCAT(DISTINCT model_id) as models
+                FROM token_usage
                 WHERE session_id = ?
             """, (session_id,))
         else:
             tokens = query_rows("""
                 SELECT
-                    SUM(CAST(json_extract(metadata, '$.token_count') AS INTEGER)) as total_tokens,
-                    COUNT(*) as exchange_count
-                FROM exchanges
+                    SUM(prompt_tokens) as total_prompt,
+                    SUM(completion_tokens) as total_completion,
+                    SUM(cached_tokens) as total_cached,
+                    SUM(prompt_tokens + completion_tokens) as total_tokens,
+                    COUNT(*) as turn_count,
+                    COUNT(DISTINCT session_id) as session_count,
+                    GROUP_CONCAT(DISTINCT model_id) as models
+                FROM token_usage
             """)
         return {"tokens": tokens}
     except Exception as e:
@@ -1459,38 +1474,38 @@ INDEX_HTML = """
 
             <div class="nav-group">
                 <div class="nav-group-title">Core</div>
-                <div class="nav-item active" data-page="dashboard"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="8" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="14" width="7" height="6" rx="1"/></svg>Dashboard</div>  # noqa: E501
-                <div class="nav-item" data-page="sessions"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>Sessions</div>  # noqa: E501
-                <div class="nav-item" data-page="search"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search</div>  # noqa: E501
+                <div class="nav-item active" data-page="dashboard"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="8" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="14" width="7" height="6" rx="1"/></svg>Dashboard</div>
+                <div class="nav-item" data-page="sessions"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>Sessions</div>
+                <div class="nav-item" data-page="search"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search</div>
             </div>
 
             <div class="nav-group">
                 <div class="nav-group-title">Analysis</div>
-                <div class="nav-item" data-page="heat"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 14.5a4 4 0 0 1 8 0c0 2.2-2.5 5.5-4 7.5-1.5-2-4-5.3-4-7.5z"/><path d="M12 2.5c0 4.5-2 7.5-2 10.5a4 4 0 0 0 4 4c1.5 0 2-1 2-1s2 1 2-2c0-5-5-8-6-11.5z"/></svg>Heat Analysis</div>  # noqa: E501
-                <div class="nav-item" data-page="keywords"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41 13.41 20.59a2 2 0 0 1-2.83 0L3.59 13.6a2 2 0 0 1 0-2.83L10.77 3.59a2 2 0 0 1 2.83 0l7.17 7.17a2 2 0 0 1 0 2.83z"/><path d="M7 7h.01"/></svg>Keywords</div>  # noqa: E501
-                <div class="nav-item" data-page="signals"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.5 16.5a6 6 0 0 1 7 0"/><path d="M12 20a2 2 0 0 1 2-2 2 2 0 0 1 2 2"/></svg>Signals</div>  # noqa: E501
-                <div class="nav-item" data-page="behavior"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a4 4 0 0 0 4-4v-1.5a3.5 3.5 0 0 0-3.5-3.5H11.5A3.5 3.5 0 0 0 8 16.5V18a4 4 0 0 0 4 4z"/><path d="M8 2c-1.11 0-2 .9-2 2v3h12V4c0-1.1-.89-2-2-2H8z"/></svg>Behavior</div>  # noqa: E501
+                <div class="nav-item" data-page="heat"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 14.5a4 4 0 0 1 8 0c0 2.2-2.5 5.5-4 7.5-1.5-2-4-5.3-4-7.5z"/><path d="M12 2.5c0 4.5-2 7.5-2 10.5a4 4 0 0 0 4 4c1.5 0 2-1 2-1s2 1 2-2c0-5-5-8-6-11.5z"/></svg>Heat Analysis</div>
+                <div class="nav-item" data-page="keywords"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41 13.41 20.59a2 2 0 0 1-2.83 0L3.59 13.6a2 2 0 0 1 0-2.83L10.77 3.59a2 2 0 0 1 2.83 0l7.17 7.17a2 2 0 0 1 0 2.83z"/><path d="M7 7h.01"/></svg>Keywords</div>
+                <div class="nav-item" data-page="signals"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.5 16.5a6 6 0 0 1 7 0"/><path d="M12 20a2 2 0 0 1 2-2 2 2 0 0 1 2 2"/></svg>Signals</div>
+                <div class="nav-item" data-page="behavior"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a4 4 0 0 0 4-4v-1.5a3.5 3.5 0 0 0-3.5-3.5H11.5A3.5 3.5 0 0 0 8 16.5V18a4 4 0 0 0 4 4z"/><path d="M8 2c-1.11 0-2 .9-2 2v3h12V4c0-1.1-.89-2-2-2H8z"/></svg>Behavior</div>
             </div>
 
             <div class="nav-group">
                 <div class="nav-group-title">Navigation</div>
-                <div class="nav-item" data-page="workspaces"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></svg>Workspaces</div>  # noqa: E501
-                <div class="nav-item" data-page="tools"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 10.3 13.4 11.6 14.1 12.3a2 2 0 0 1 0 2.83l-5.7 5.7a2 2 0 0 1-2.83 0L3.4 17.7a2 2 0 0 1 0-2.83l5.7-5.7a2 2 0 0 1 2.83 0l.7.7 1.3-1.3"/><path d="M9 14.6l-2-2"/></svg>Tool Calls</div>  # noqa: E501
-                <div class="nav-item" data-page="memory"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Memory</div>  # noqa: E501
-                <div class="nav-item" data-page="tokens"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12h10"/><path d="M8 8h8"/><path d="M8 16h8"/><path d="M12 4v16"/></svg>Tokens</div>  # noqa: E501
+                <div class="nav-item" data-page="workspaces"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></svg>Workspaces</div>
+                <div class="nav-item" data-page="tools"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 10.3 13.4 11.6 14.1 12.3a2 2 0 0 1 0 2.83l-5.7 5.7a2 2 0 0 1-2.83 0L3.4 17.7a2 2 0 0 1 0-2.83l5.7-5.7a2 2 0 0 1 2.83 0l.7.7 1.3-1.3"/><path d="M9 14.6l-2-2"/></svg>Tool Calls</div>
+                <div class="nav-item" data-page="memory"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Memory</div>
+                <div class="nav-item" data-page="tokens"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12h10"/><path d="M8 8h8"/><path d="M8 16h8"/><path d="M12 4v16"/></svg>Tokens</div>
             </div>
 
             <div class="nav-group">
                 <div class="nav-group-title">Intelligence</div>
-                <div class="nav-item" data-page="alerts"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Alerts</div>  # noqa: E501
-                <div class="nav-item" data-page="recommendations"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M9 9a3 3 0 0 1 6 0c0 1.38-.56 2.63-1.5 3.5A3 3 0 0 0 12 17a3 3 0 0 0-1.5-4.5C9.56 11.63 9 10.38 9 9z"/></svg>Recommendations</div>  # noqa: E501
-                <div class="nav-item" data-page="topics"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Topics</div>  # noqa: E501
+                <div class="nav-item" data-page="alerts"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Alerts</div>
+                <div class="nav-item" data-page="recommendations"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M9 9a3 3 0 0 1 6 0c0 1.38-.56 2.63-1.5 3.5A3 3 0 0 0 12 17a3 3 0 0 0-1.5-4.5C9.56 11.63 9 10.38 9 9z"/></svg>Recommendations</div>
+                <div class="nav-item" data-page="topics"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>Topics</div>
             </div>
 
             <div class="nav-group">
                 <div class="nav-group-title">System</div>
-                <div class="nav-item" data-page="pipeline"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v6h12"/></svg>Pipeline</div>  # noqa: E501
-                <div class="nav-item" data-page="query"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9 4-4 4 4"/><path d="m8 15 4-4 4 4"/></svg>Raw Query</div>  # noqa: E501
+                <div class="nav-item" data-page="pipeline"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v6h12"/></svg>Pipeline</div>
+                <div class="nav-item" data-page="query"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9 4-4 4 4"/><path d="m8 15 4-4 4 4"/></svg>Raw Query</div>
             </div>
         </div>
 
@@ -1726,11 +1741,10 @@ def render_tokens():
     return """
     <div class="page-header">
         <div class="page-title">Token Usage</div>
-        <div class="page-subtitle">Token consumption analysis by session.</div>
+        <div class="page-subtitle">Token consumption across all sessions.</div>
     </div>
-    <div class="card">
-        <p>Token usage analysis coming soon.</p>
-    </div>
+    <div id="tokens-summary" class="loading"><div class="spinner"></div>Loading...</div>
+    <div id="tokens-table" style="margin-top:16px"></div>
     """
 
 
@@ -1910,6 +1924,9 @@ function initializePage(page) {
         case 'alerts':
             initAlerts();
             break;
+        case 'tokens':
+            initTokens();
+            break;
         case 'pipeline':
             initPipeline();
             break;
@@ -2069,7 +2086,7 @@ function openSessionDrawer(sessionId) {
         window.currentSessionDetail = data;
 
         titleEl.textContent = session.title || `Session ${session.session_id || sessionId}`;
-        subtitleEl.textContent = `Workspace ${session.workspace_id || '—'} · ${session.created_at ? new Date(session.created_at).toLocaleString() : 'Unknown date'}`;  # noqa: E501
+        subtitleEl.textContent = `Workspace ${session.workspace_id || '—'} · ${session.created_at ? new Date(session.created_at).toLocaleString() : 'Unknown date'}`;
 
         body.innerHTML = renderDrawerTabContent('overview', window.currentSessionDetail);
     }).catch(err => {
@@ -2112,7 +2129,7 @@ function renderDrawerTabContent(tab, data) {
                     ['Requests', session.request_count || '—'],
                     ['State', session.response_state || '—'],
                     ['Location', session.initial_location || '—'],
-                    ['Heat Score', `<span style="color: ${heatScore !== 'N/A' && heatScore >= 50 ? 'var(--danger)' : 'var(--accent)'};">${heatScore}</span>`],  # noqa: E501
+                    ['Heat Score', `<span style="color: ${heatScore !== 'N/A' && heatScore >= 50 ? 'var(--danger)' : 'var(--accent)'};">${heatScore}</span>`],
                     ['Created At', session.created_at ? new Date(session.created_at).toLocaleString() : 'Unknown']
                 ].map(([label, value]) => `
                     <div class="data-row">
@@ -2126,7 +2143,7 @@ function renderDrawerTabContent(tab, data) {
 
     const sanitize = text => String(text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const sessionSummary = sanitize(session.summary || analysis.summary || '');
-    const turnPoint = analysis.turning_point_text ? sanitize(analysis.turning_point_text.substring(0, 300)) + (analysis.turning_point_text.length > 300 ? '…' : '') : '';  # noqa: E501
+    const turnPoint = analysis.turning_point_text ? sanitize(analysis.turning_point_text.substring(0, 300)) + (analysis.turning_point_text.length > 300 ? '…' : '') : '';
 
     if (tab === 'overview') {
         const chatCount = exchanges.length;
@@ -2240,7 +2257,7 @@ function renderDrawerTabContent(tab, data) {
             }
         });
         const allToolCalls = toolCalls.length ? toolCalls : embeddedCalls;
-        const toolsHtml = allToolCalls.length ? `<table class="table"><thead><tr><th>#</th><th>Tool</th><th>Exchange</th><th>When</th></tr></thead><tbody>${allToolCalls.map((call, i) => `<tr><td>${i + 1}</td><td>${call.tool_name || call.name || 'Tool'}</td><td>${call.exchange_index || ''}</td><td>${call.created_at ? new Date(call.created_at).toLocaleString() : ''}</td></tr><tr><td colspan="4"><div class="code-block" style="margin: 0; padding: 12px;">${(call.arguments_json || call.arguments || call.args || 'No arguments').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No tool calls recorded for this session.</div>';  # noqa: E501
+        const toolsHtml = allToolCalls.length ? `<table class="table"><thead><tr><th>#</th><th>Tool</th><th>Exchange</th><th>When</th></tr></thead><tbody>${allToolCalls.map((call, i) => `<tr><td>${i + 1}</td><td>${call.tool_name || call.name || 'Tool'}</td><td>${call.exchange_index || ''}</td><td>${call.created_at ? new Date(call.created_at).toLocaleString() : ''}</td></tr><tr><td colspan="4"><div class="code-block" style="margin: 0; padding: 12px;">${(call.arguments_json || call.arguments || call.args || 'No arguments').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No tool calls recorded for this session.</div>';
         return `
             ${metadataSection}
             <div class="drawer-section">
@@ -2264,7 +2281,7 @@ function renderDrawerTabContent(tab, data) {
                 </table>
             </div>
         ` : '';
-        const signalsHtml = signals.length ? `<table class="table"><thead><tr><th>#</th><th>Signal</th><th>Created</th><th>Details</th></tr></thead><tbody>${signals.map((s, i) => `<tr><td>${i + 1}</td><td>${s.signal_type || s.matched_keyword || 'Signal'}</td><td>${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</td><td>${(s.signal_text || s.user_message || s.matched_keyword || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No exchange signals available.</div>';  # noqa: E501
+        const signalsHtml = signals.length ? `<table class="table"><thead><tr><th>#</th><th>Signal</th><th>Created</th><th>Details</th></tr></thead><tbody>${signals.map((s, i) => `<tr><td>${i + 1}</td><td>${s.signal_type || s.matched_keyword || 'Signal'}</td><td>${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</td><td>${(s.signal_text || s.user_message || s.matched_keyword || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No exchange signals available.</div>';
         return `
             ${metadataSection}
             ${summaryHtml}
@@ -2276,7 +2293,7 @@ function renderDrawerTabContent(tab, data) {
     }
 
     if (tab === 'files') {
-        const fileHtml = vfsEntries.length ? `<table class="table"><thead><tr><th>#</th><th>File</th><th>Type</th><th>Size</th><th>Path</th></tr></thead><tbody>${vfsEntries.map((file, i) => `<tr><td>${i + 1}</td><td>${file.filename || file.source_path || file.source_type}</td><td>${file.content_type || 'unknown'}</td><td>${file.size_bytes ? (file.size_bytes / 1024).toFixed(2) + ' KB' : 'unknown'}</td><td class="truncate">${file.source_path || ''}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No session files found.</div>';  # noqa: E501
+        const fileHtml = vfsEntries.length ? `<table class="table"><thead><tr><th>#</th><th>File</th><th>Type</th><th>Size</th><th>Path</th></tr></thead><tbody>${vfsEntries.map((file, i) => `<tr><td>${i + 1}</td><td>${file.filename || file.source_path || file.source_type}</td><td>${file.content_type || 'unknown'}</td><td>${file.size_bytes ? (file.size_bytes / 1024).toFixed(2) + ' KB' : 'unknown'}</td><td class="truncate">${file.source_path || ''}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No session files found.</div>';
         return `
             ${metadataSection}
             <div class="drawer-section">
@@ -2287,7 +2304,7 @@ function renderDrawerTabContent(tab, data) {
     }
 
     if (tab === 'alerts') {
-        const alertsHtml = alerts.length ? `<table class="table"><thead><tr><th>#</th><th>Alert</th><th>Severity</th><th>Created</th></tr></thead><tbody>${alerts.map((alert, i) => `<tr><td>${i + 1}</td><td>${alert.alert_type || 'Alert'}<div class="alert-text">${(alert.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></td><td>${alert.severity || 'unknown'}</td><td>${alert.created_at ? new Date(alert.created_at).toLocaleString() : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No alerts recorded for this session.</div>';  # noqa: E501
+        const alertsHtml = alerts.length ? `<table class="table"><thead><tr><th>#</th><th>Alert</th><th>Severity</th><th>Created</th></tr></thead><tbody>${alerts.map((alert, i) => `<tr><td>${i + 1}</td><td>${alert.alert_type || 'Alert'}<div class="alert-text">${(alert.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></td><td>${alert.severity || 'unknown'}</td><td>${alert.created_at ? new Date(alert.created_at).toLocaleString() : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="alert alert-info">No alerts recorded for this session.</div>';
         return `
             ${metadataSection}
             <div class="drawer-section">
@@ -2356,6 +2373,46 @@ function initKeywords() {
         `;
         container.innerHTML = html;
     });
+}
+
+function initTokens() {
+    const summary = document.getElementById('tokens-summary');
+    const table = document.getElementById('tokens-table');
+    if (!summary) return;
+    summary.innerHTML = '<div class="spinner"></div> Loading...';
+    fetch('/api/tokens').then(r => r.json()).then(data => {
+        const t = (data.tokens || [])[0] || {};
+        const fmt = n => (n || 0).toLocaleString();
+        summary.innerHTML = `
+            <div class="grid-4">
+                <div class="card"><div class="card-header">Total Tokens</div><div class="card-value">${fmt(t.total_tokens)}</div></div>
+                <div class="card"><div class="card-header">Prompt</div><div class="card-value">${fmt(t.total_prompt)}</div></div>
+                <div class="card"><div class="card-header">Completion</div><div class="card-value">${fmt(t.total_completion)}</div></div>
+                <div class="card"><div class="card-header">Cached</div><div class="card-value">${fmt(t.total_cached)}</div></div>
+                <div class="card"><div class="card-header">Sessions</div><div class="card-value">${fmt(t.session_count)}</div></div>
+                <div class="card"><div class="card-header">Turns</div><div class="card-value">${fmt(t.turn_count)}</div></div>
+            </div>
+            <div class="card" style="margin-top:12px"><b>Models:</b> ${t.models || 'n/a'}</div>
+        `;
+    }).catch(() => {
+        summary.innerHTML = '<div class="alert alert-danger">Failed to load token data.</div>';
+    });
+    if (table) {
+        table.innerHTML = '<div class="spinner"></div> Loading sessions...';
+        const sql = 'SELECT s.title, tu.session_id, SUM(tu.prompt_tokens) as prompt, SUM(tu.completion_tokens) as completion, SUM(tu.cached_tokens) as cached, SUM(tu.prompt_tokens + tu.completion_tokens) as total, COUNT(*) as turns, GROUP_CONCAT(DISTINCT tu.model_id) as models FROM token_usage tu JOIN sessions s ON tu.session_id = s.session_id GROUP BY tu.session_id ORDER BY total DESC LIMIT 50';
+        fetch('/api/query', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({sql: sql})})
+            .then(r => r.json()).then(data => {
+                const rows = data.rows || [];
+                if (!rows.length) { table.innerHTML = '<p>No per-session data.</p>'; return; }
+                const fmt = n => (n || 0).toLocaleString();
+                let html = '<div class="card"><div class="card-header">Top Sessions by Token Usage</div><table class="table"><thead><tr><th>Session</th><th>Total</th><th>Prompt</th><th>Completion</th><th>Cached</th><th>Turns</th><th>Models</th></tr></thead><tbody>';
+                rows.forEach(r => {
+                    html += '<tr><td class="truncate">' + (r.title || r.session_id) + '</td><td>' + fmt(r.total) + '</td><td>' + fmt(r.prompt) + '</td><td>' + fmt(r.completion) + '</td><td>' + fmt(r.cached) + '</td><td>' + r.turns + '</td><td class="truncate">' + (r.models || '') + '</td></tr>';
+                });
+                html += '</tbody></table></div>';
+                table.innerHTML = html;
+            }).catch(() => { table.innerHTML = '<p>Failed to load session breakdown.</p>'; });
+    }
 }
 
 function initWorkspaces() {
@@ -2497,14 +2554,14 @@ function initPipeline() {
                 <tbody>
                     ${data.services.map(s => `
                         <tr>
-                            <td><strong>${s.label}</strong><div class="truncate" style="font-size:12px;color:var(--text-tertiary);">${s.description}</div></td>  # noqa: E501
+                            <td><strong>${s.label}</strong><div class="truncate" style="font-size:12px;color:var(--text-tertiary);">${s.description}</div></td>
                             <td>${s.status}</td>
                             <td>${s.pid || '—'}</td>
                             <td>${s.updated_at || '—'}</td>
                             <td>
-                                ${s.allowed_actions.includes('start') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','start')">Start</button>` : ''}  # noqa: E501
-                                ${s.allowed_actions.includes('stop') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','stop')">Stop</button>` : ''}  # noqa: E501
-                                ${s.allowed_actions.includes('restart') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','restart')">Restart</button>` : ''}  # noqa: E501
+                                ${s.allowed_actions.includes('start') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','start')">Start</button>` : ''}
+                                ${s.allowed_actions.includes('stop') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','stop')">Stop</button>` : ''}
+                                ${s.allowed_actions.includes('restart') ? `<button class="button button-secondary small" onclick="runPmfServiceAction('${s.service_id}','restart')">Restart</button>` : ''}
                             </td>
                         </tr>
                     `).join('')}
@@ -2733,6 +2790,13 @@ def application(environ, start_response):
 
         elif path == '/api/memory':
             data = get_memory()
+            response = json.dumps(data).encode('utf-8')
+            start_response('200 OK', [('Content-Type', 'application/json')])
+            return [response]
+
+        elif path == '/api/tokens':
+            session_id = query.get('session_id', [None])[0]
+            data = get_tokens(session_id)
             response = json.dumps(data).encode('utf-8')
             start_response('200 OK', [('Content-Type', 'application/json')])
             return [response]

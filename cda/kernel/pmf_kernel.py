@@ -421,6 +421,14 @@ class PMFKernel:
                         pass
                 time.sleep(0.25)
                 wait_seconds += 0.25
+            # Process didn't write its own pid file — write it now using the
+            # spawned process's PID so status checks work correctly.
+            if self._is_process_alive(proc.pid):
+                try:
+                    spec.pid_file.write_text(str(proc.pid))
+                    state["pid"] = proc.pid
+                except Exception:
+                    pass
 
         if spec.service_type == "daemon":
             state["status"] = "running"

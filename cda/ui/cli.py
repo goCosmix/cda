@@ -255,7 +255,7 @@ class CDAGroup(click.Group):
 
 @click.group(cls=CDAGroup, invoke_without_command=True)
 @click.pass_context
-@click.version_option("1.0.0", prog_name="cda")
+@click.version_option(package_name="code-data-ark", prog_name="cda")
 def cli(ctx):
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())

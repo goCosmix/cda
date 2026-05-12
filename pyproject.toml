@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "code-data-ark"
-version = "2.0.6"
+version = "2.0.11"
 description = "Code Data Ark — local observability and intelligence platform for VS Code + Copilot Chat sessions"
 readme = "readme.md"
 license = "MIT"

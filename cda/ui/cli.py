@@ -646,6 +646,129 @@ def pmf_uninstall():
     click.echo(green("  CDA will no longer start automatically on login."))
 
 
+# ── EAK command group (Embedded App Kernel — canonical name for PMF) ─────────
+
+@cli.group()
+def eak():
+    """Manage the Embedded App Kernel (EAK) and Ark runtime services."""
+    pass
+
+
+@eak.command("services")
+@click.pass_context
+def eak_services(ctx):
+    """List EAK services and runtime status."""
+    ctx.invoke(pmf_services)
+
+
+@eak.command("status")
+@click.argument("service_id", required=False)
+@click.pass_context
+def eak_status(ctx, service_id):
+    """Show EAK runtime status for one or all services."""
+    ctx.invoke(pmf_status, service_id=service_id)
+
+
+@eak.command("start")
+@click.argument("service_id")
+@click.option("--host", default="127.0.0.1", help="Host override for UI service")
+@click.option("--port", default=10001, help="Port override for UI service")
+@click.option("--no-browser", "no_browser", is_flag=True, default=False, help="Don't open browser (UI only)")
+@click.pass_context
+def eak_start(ctx, service_id, host, port, no_browser):
+    """Start an EAK-managed Ark service or task."""
+    ctx.invoke(pmf_start, service_id=service_id, host=host, port=port, no_browser=no_browser)
+
+
+@eak.command("stop")
+@click.argument("service_id")
+@click.pass_context
+def eak_stop(ctx, service_id):
+    """Stop an EAK-managed Ark service."""
+    ctx.invoke(pmf_stop, service_id=service_id)
+
+
+@eak.command("restart")
+@click.argument("service_id")
+@click.pass_context
+def eak_restart(ctx, service_id):
+    """Restart an EAK-managed Ark service."""
+    ctx.invoke(pmf_restart, service_id=service_id)
+
+
+@eak.command("logs")
+@click.argument("service_id")
+@click.option("--tail", default=50, show_default=True, help="Lines to tail from the log file")
+@click.pass_context
+def eak_logs(ctx, service_id, tail):
+    """Display the last lines from an EAK service log."""
+    ctx.invoke(pmf_logs, service_id=service_id, tail=tail)
+
+
+@eak.command("events")
+@click.option("--tail", default=20, show_default=True, help="Number of recent kernel events to display")
+def eak_events(tail):
+    """Show recent EAK kernel events from the runtime event journal."""
+    try:
+        state = kernel._load_state()
+        events = state.get("events", [])
+        if not events:
+            click.echo(dim("  No kernel events recorded yet."))
+            return
+        recent = events[-tail:]
+        click.echo()
+        click.echo(bold("  EAK Kernel Events"))
+        click.echo(hr())
+        for ev in reversed(recent):
+            ts = ev.get("ts", "?")
+            kind = ev.get("kind", "?")
+            msg = ev.get("msg", "")
+            click.echo(f"  {dim(ts)}  {bold(kind):<12}  {msg}")
+        click.echo()
+    except Exception as exc:
+        click.echo(red(f"  Failed to read events: {exc}"))
+
+
+@eak.command("up")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Host for web UI")
+@click.option("--port", default=10001, show_default=True, help="Port for web UI")
+@click.option("--no-browser", "no_browser", is_flag=True, default=False, help="Don't open browser when UI is ready")
+@click.pass_context
+def eak_up(ctx, host, port, no_browser):
+    """Start all CDA services (watcher + web UI). Called automatically by launchd on login."""
+    ctx.invoke(pmf_up, host=host, port=port, no_browser=no_browser)
+
+
+@eak.command("down")
+def eak_down():
+    """Stop all CDA services (web UI + watcher)."""
+    click.echo(bold("  Code Data Ark — stopping services"))
+    click.echo(hr())
+    for sid in ("ui", "watcher"):
+        try:
+            result = kernel.stop_service(sid)
+            click.echo(green(f"  {result['label']:<12} stopped"))
+        except PMFKernelError as exc:
+            click.echo(yellow(f"  {sid:<12} {exc}"))
+    click.echo()
+
+
+@eak.command("install")
+@click.pass_context
+def eak_install(ctx):
+    """Install CDA as a macOS launchd LaunchAgent (auto-start on login)."""
+    ctx.invoke(pmf_install)
+
+
+@eak.command("uninstall")
+@click.pass_context
+def eak_uninstall(ctx):
+    """Remove the CDA launchd LaunchAgent."""
+    ctx.invoke(pmf_uninstall)
+
+
+# ── embed ──────────────────────────────────────────────────────────────────────
+
 @cli.group()
 def embed():
     """Build and inspect semantic intelligence."""

@@ -596,7 +596,7 @@ def main():
     # Ensure watcher-required schema exists before replaying operations.
     try:
         import importlib
-        extract = importlib.import_module('cda.extract')
+        extract = importlib.import_module('cda.pipeline.extract')
         importlib.reload(extract)
         extract.ensure_schema(conn)
     except Exception as ex:
@@ -646,7 +646,7 @@ def main():
         # Incremental extraction: run behavioral signals + session analysis
         try:
             import importlib
-            extract = importlib.import_module('cda.extract')
+            extract = importlib.import_module('cda.pipeline.extract')
             importlib.reload(extract)
             c2 = get_conn()
             try:
@@ -662,7 +662,7 @@ def main():
                     extract.build_session_analysis(c2, session_id)
                     c2.commit()
                     try:
-                        embed = importlib.import_module('cda.embed')
+                        embed = importlib.import_module('cda.pipeline.embed')
                         importlib.reload(embed)
                         embed.build_session_intelligence(c2, session_id)
                         c2.commit()
@@ -759,7 +759,7 @@ def main():
             if symbol_index_dirty:
                 try:
                     import importlib
-                    extract = importlib.import_module('cda.extract')
+                    extract = importlib.import_module('cda.pipeline.extract')
                     importlib.reload(extract)
                     c2 = get_conn()
                     try:

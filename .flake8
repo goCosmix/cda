@@ -17,3 +17,5 @@ extend-ignore =
 per-file-ignores =
     # Conditional import at bottom of watcher.py main guard
     cda/pipeline/watcher.py:E402
+    # HTML/SVG template strings are inherently long
+    cda/ui/templates.py:E501

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.12] - 2026-05-11
+
+### Fixed
+- **Version file alignment** — `version` file was stuck at `2.0.11` while `pyproject.toml` and `__init__.py` were already at `2.0.12`; now all three agree.
+- **Control plane events** — `vet.py` now writes `vet.start`, `vet.pass`, and `vet.fail` events to the `events` table on every run (previously the events table was always empty).
+- **Identity version drift** — `vet.py` now refreshes `identity.version` from the `version` file on every passing run, preventing the identity DB from drifting behind the actual version.
+- **Push script double upload** — `push.py` was calling `twine upload dist/*` (glob that subprocess cannot expand) before the correct explicit-file call; removed the dead first call.
+- **Editable install** — `code-data-ark` was not installed as an editable package; installed via `pip install -e .`, unblocking all tests and imports.
+
 ## [2.0.6] - 2026-05-11
 
 ### Added
